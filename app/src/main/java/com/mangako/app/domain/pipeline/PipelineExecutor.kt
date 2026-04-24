@@ -92,7 +92,9 @@ class PipelineExecutor(
                             } else {
                                 val opts = if (rule.ignoreCase) setOf(RegexOption.IGNORE_CASE) else emptySet()
                                 val match = Regex(rule.pattern, opts).find(src)
-                                match?.groups?.getOrNull(rule.group)?.value.orEmpty()
+                                // MatchGroupCollection doesn't expose getOrNull — guard by index
+                                // to survive patterns with no capture groups or a group arg out of range.
+                                match?.groupValues?.getOrNull(rule.group).orEmpty()
                             }
                             val resolved = captured.ifBlank { interpolate(rule.defaultValue, vars) }
                             if (resolved.isBlank()) {

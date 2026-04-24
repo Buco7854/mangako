@@ -8,6 +8,7 @@ import androidx.datastore.dataStore
 import com.mangako.app.domain.rule.DefaultTemplate
 import com.mangako.app.domain.rule.PipelineConfig
 import com.mangako.app.domain.rule.RuleJson
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
@@ -49,7 +50,7 @@ private val Context.pipelineStore: DataStore<PipelineConfig> by dataStore(
 )
 
 @Singleton
-class PipelineRepository @Inject constructor(private val context: Context) {
+class PipelineRepository @Inject constructor(@ApplicationContext private val context: Context) {
 
     val flow: Flow<PipelineConfig> = context.pipelineStore.data
 

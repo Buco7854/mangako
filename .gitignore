@@ -1,0 +1,16 @@
+*.iml
+.claude/
+.gradle/
+build/
+/local.properties
+/.idea/*
+!/.idea/codeStyles
+!/.idea/inspectionProfiles
+.DS_Store
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.keystore
+!debug.keystore

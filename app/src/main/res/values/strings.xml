@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Mangako</string>
+
+    <!-- Navigation -->
+    <string name="nav_pipeline">Pipeline</string>
+    <string name="nav_inbox">Inbox</string>
+    <string name="nav_history">History</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Pipeline screen -->
+    <string name="pipeline_live_preview">Live Preview</string>
+    <string name="pipeline_input_filename">Input filename</string>
+    <string name="pipeline_empty_title">Pipeline is empty</string>
+    <string name="pipeline_empty_subtitle">Add rules one by one, or start with the LANraragi standard.</string>
+    <string name="pipeline_lanraragi_standard">LANraragi Standard</string>
+    <string name="pipeline_add_rule">Add rule</string>
+    <string name="pipeline_copy_json">Copy JSON</string>
+    <string name="pipeline_export">Export</string>
+    <string name="pipeline_import">Import</string>
+    <string name="pipeline_load_defaults_cd">Load LANraragi Standard</string>
+    <string name="pipeline_json_copied">JSON copied to clipboard</string>
+    <string name="pipeline_exported_to">Exported to %1$s</string>
+    <string name="pipeline_empty_preview">(empty)</string>
+
+    <!-- Rule list / cards -->
+    <string name="rule_reorder_cd">Reorder</string>
+    <string name="rule_edit_cd">Edit</string>
+    <string name="rule_delete_cd">Delete</string>
+    <string name="rule_cancel">Cancel</string>
+    <string name="rule_save">Save</string>
+
+    <!-- Rule editor -->
+    <string name="editor_label_optional">Label (optional)</string>
+    <string name="editor_regex_pattern">Pattern (regex)</string>
+    <string name="editor_regex_replacement">Replacement (supports %%var%%)</string>
+    <string name="editor_case_insensitive">Case-insensitive</string>
+    <string name="editor_append_label">Text to append</string>
+    <string name="editor_prepend_label">Text to prepend</string>
+    <string name="editor_relocator_separator">Separator</string>
+    <string name="editor_relocator_group">Capture group (0 = whole match)</string>
+    <string name="editor_relocator_move_to">Move to</string>
+    <string name="editor_condition">Condition</string>
+    <string name="editor_condition_variable">Variable (e.g. genre, title, __filename__)</string>
+    <string name="editor_condition_operator">Operator</string>
+    <string name="editor_condition_value">Value</string>
+    <string name="editor_xml_mapping_variable">Variable</string>
+    <string name="editor_xml_mapping_element">XML element</string>
+    <string name="editor_xml_description">Reads ComicInfo.xml and exposes each mapping as a %%variable%%.</string>
+    <string name="editor_conditional_nested_hint">This rule runs %1$d rule(s) in the THEN branch and %2$d in the ELSE branch. Nested rules are configured via JSON export/import for now.</string>
+    <string name="editor_extract_description">Extracts a value from one variable into another. Useful for fields the XML buries in prose (e.g. \"Languages: English\" in Summary).</string>
+    <string name="editor_extract_source">Source variable</string>
+    <string name="editor_extract_target">Target variable</string>
+    <string name="editor_extract_pattern">Pattern (empty = copy whole source)</string>
+    <string name="editor_extract_group">Capture group</string>
+    <string name="editor_extract_default">Default (if no match)</string>
+    <string name="editor_extract_only_if_empty">Only write if %%%1$s%% is empty</string>
+    <string name="editor_cleanws_trim">Also trim leading/trailing whitespace</string>
+
+    <!-- Add rule / Import dialogs -->
+    <string name="dialog_add_rule_title">Add rule</string>
+    <string name="dialog_import_title">Import pipeline</string>
+    <string name="dialog_import_body">Paste an exported JSON or pick a file.</string>
+    <string name="dialog_import_json_label">JSON</string>
+    <string name="dialog_import_button">Import JSON</string>
+    <string name="dialog_import_button_busy">Importing…</string>
+    <string name="dialog_import_pick_file">Pick file…</string>
+    <string name="dialog_import_error">That JSON couldn\'t be parsed. Double-check the schema and try again.</string>
+    <string name="rule_kind_extract_xml">Extract XML metadata</string>
+    <string name="rule_kind_extract_regex">Extract regex → variable</string>
+    <string name="rule_kind_regex">Regex replace</string>
+    <string name="rule_kind_append">Append text</string>
+    <string name="rule_kind_prepend">Prepend text</string>
+    <string name="rule_kind_relocator">Tag relocator</string>
+    <string name="rule_kind_conditional">Conditional</string>
+    <string name="rule_kind_cleanws">Clean whitespace</string>
+
+    <!-- Inbox -->
+    <string name="inbox_scan_now_cd">Scan now</string>
+    <string name="inbox_empty_title">Inbox is empty</string>
+    <string name="inbox_empty_subtitle">New .cbz files from your watched folders will show up here.</string>
+    <string name="inbox_pending_count">%1$d pending</string>
+    <string name="inbox_ignore_all">Ignore all</string>
+    <string name="inbox_process_all">Process all</string>
+    <string name="inbox_ignore">Ignore</string>
+    <string name="inbox_process">Process</string>
+
+    <!-- History -->
+    <string name="history_title">History</string>
+    <string name="history_clear_cd">Clear history</string>
+    <string name="history_empty">No processed files yet.</string>
+    <string name="history_detail_title">Audit log</string>
+    <string name="history_detail_back_cd">Back</string>
+    <string name="history_label_original">Original</string>
+    <string name="history_label_final">Final</string>
+    <string name="history_ran_in">%1$s · ran in %2$d ms</string>
+    <string name="history_section_rules">Rules</string>
+    <string name="history_section_upload">Final upload</string>
+    <string name="history_loading">Loading…</string>
+    <string name="history_step_header">Step %1$d · %2$s</string>
+    <string name="history_step_skipped">⤷ skipped: %1$s</string>
+    <string name="history_step_noop">⤷ no-op (output matches input)</string>
+    <string name="history_step_duration_ms">%1$d ms</string>
+    <string name="history_upload_success">Upload: Success (HTTP %1$d)</string>
+    <string name="history_upload_fail">Upload failed</string>
+    <string name="history_upload_fail_code">Upload failed (HTTP %1$d)</string>
+    <string name="history_source_deleted">Source file deleted.</string>
+    <string name="history_source_kept">Source file kept (delete-on-success is off).</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_server">LANraragi Server</string>
+    <string name="settings_base_url">Base URL (https://lrr.example.com)</string>
+    <string name="settings_insecure_warning">⚠ This is an http:// URL on a public host. Your API key will travel in the clear. Prefer https:// or a LAN/VPN address.</string>
+    <string name="settings_api_key">API key</string>
+    <string name="settings_api_key_hint">Stored encrypted in the Android Keystore.</string>
+    <string name="settings_test_connection">Test connection</string>
+    <string name="settings_section_folders">Watched folders</string>
+    <string name="settings_folders_intro">Mangako scans these folders every 15 minutes for new .cbz files. Add as many as you like.</string>
+    <string name="settings_folders_empty">No folders yet — add the download directory of Mihon, Tachiyomi, etc.</string>
+    <string name="settings_add_folder">Add folder</string>
+    <string name="settings_scan_now">Scan now</string>
+    <string name="settings_remove_folder_cd">Remove</string>
+    <string name="settings_section_watcher">Watcher</string>
+    <string name="settings_watcher_enabled">Watcher enabled</string>
+    <string name="settings_watcher_enabled_sub">Background scan for new files</string>
+    <string name="settings_mode_label">Processing mode</string>
+    <string name="settings_mode_approval">Ask first</string>
+    <string name="settings_mode_auto">Auto-process</string>
+    <string name="settings_mode_approval_desc">Detected files wait in the Inbox until you tap Process or Ignore.</string>
+    <string name="settings_mode_auto_desc">Detected files run through the pipeline and upload immediately.</string>
+    <string name="settings_notify_enabled">Notify on detection</string>
+    <string name="settings_notify_enabled_sub">Post a notification with Process / Ignore actions</string>
+    <string name="settings_delete_enabled">Delete source on success</string>
+    <string name="settings_delete_enabled_sub">Remove the original .cbz after a successful upload</string>
+    <string name="settings_debounce_label">Debounce window: %1$d s</string>
+    <string name="settings_debounce_desc">File size must stay stable for this long before we start processing. Prevents grabbing half-written downloads.</string>
+    <string name="settings_debounce_value">%1$ds</string>
+    <string name="settings_test_ok_prefix">✓</string>
+    <string name="settings_test_fail_prefix">✗</string>
+    <string name="settings_test_url_empty">Server URL is empty</string>
+    <string name="settings_test_http">HTTP %1$d</string>
+
+    <!-- Notifications -->
+    <string name="notif_channel_detected">New CBZ detected</string>
+    <string name="notif_channel_detected_desc">Ask before processing newly-downloaded files</string>
+    <string name="notif_channel_progress">Processing progress</string>
+    <string name="notif_channel_inbox">Inbox reminder</string>
+    <string name="notif_channel_inbox_desc">Persistent summary when files are waiting for approval</string>
+    <string name="notif_detected_title">New CBZ: %1$s</string>
+    <string name="notif_detected_body">%1$s\nfrom %2$s</string>
+    <string name="notif_detected_action_process">Process</string>
+    <string name="notif_detected_action_ignore">Ignore</string>
+    <string name="notif_inbox_summary_one">1 file awaiting review</string>
+    <string name="notif_inbox_summary_other">%1$d files awaiting review</string>
+    <string name="notif_inbox_summary_body">Open Mangako to approve or ignore</string>
+
+    <!-- Imports / messages -->
+    <string name="msg_imported">Imported pipeline \"%1$s\" (%2$d rules)</string>
+    <string name="msg_import_failed">Import failed: %1$s</string>
+    <string name="msg_defaults_loaded">Loaded LANraragi Standard pipeline</string>
+    <string name="msg_exported_generic">Exported</string>
+</resources>

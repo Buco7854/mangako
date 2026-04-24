@@ -1,0 +1,180 @@
+package com.mangako.app.work
+
+import android.content.Context
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
+import androidx.hilt.work.HiltWorker
+import androidx.work.CoroutineWorker
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import com.mangako.app.data.pending.PendingRepository
+import com.mangako.app.data.settings.SettingsRepository
+import com.mangako.app.work.notify.Notifications
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.firstOrNull
+import java.util.concurrent.TimeUnit
+
+/**
+ * Periodic scan of every folder the user has subscribed to. SAF URIs can't be
+ * watched with FileObserver across API levels, so we poll every 15 minutes
+ * (the WorkManager minimum) and also expose a "Scan now" trigger.
+ *
+ * What happens with each newly-discovered .cbz depends on [SettingsRepository.Settings.mode]:
+ *   - APPROVAL: row is inserted into the pending queue, optionally with a
+ *               notification carrying Process/Ignore actions.
+ *   - AUTO:     a [ProcessCbzWorker] is enqueued immediately.
+ */
+@HiltWorker
+class DirectoryScanWorker @AssistedInject constructor(
+    @Assisted appContext: Context,
+    @Assisted params: WorkerParameters,
+    private val settingsRepo: SettingsRepository,
+    private val pendingRepo: PendingRepository,
+) : CoroutineWorker(appContext, params) {
+
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val settings = settingsRepo.flow.first()
+        if (!settings.watcherEnabled || settings.watchFolderUris.isEmpty()) {
+            return@withContext Result.success()
+        }
+
+        for (folderUri in settings.watchFolderUris) {
+            val folder = DocumentFile.fromTreeUri(applicationContext, Uri.parse(folderUri))
+            if (folder == null || !folder.isDirectory) continue
+
+            walkCbz(folder).forEach { child ->
+                val name = child.name.orEmpty()
+                when (settings.mode) {
+                    SettingsRepository.Mode.APPROVAL -> handleApproval(
+                        child = child,
+                        name = name,
+                        folderUri = folderUri,
+                        notify = settings.notifyOnDetected,
+                    )
+                    SettingsRepository.Mode.AUTO -> enqueueProcess(
+                        uri = child.uri.toString(),
+                        name = name,
+                    )
+                }
+            }
+        }
+        // When per-file toasts are disabled but the inbox has waiting items,
+        // surface a single persistent "N awaiting review" notification so the
+        // user isn't relying purely on spotting the bottom-nav badge.
+        if (settings.mode == SettingsRepository.Mode.APPROVAL && !settings.notifyOnDetected) {
+            val pendingCount = pendingRepo.countPending().firstOrNull() ?: 0
+            Notifications.postInboxSummary(applicationContext, pendingCount)
+        } else {
+            Notifications.cancelInboxSummary(applicationContext)
+        }
+        Result.success()
+    }
+
+    /**
+     * Depth-first walk of [root] yielding every .cbz descendant. Manga readers
+     * (Mihon, Tachiyomi) often nest files several levels deep — e.g.
+     * `root/ExtensionName/MangaName/Chapter.cbz` — so a single-level `listFiles`
+     * misses the actual downloads. We cap recursion depth defensively to avoid
+     * pathological loops if the tree ever contains a symlink cycle via SAF.
+     */
+    private fun walkCbz(root: DocumentFile, maxDepth: Int = MAX_WALK_DEPTH): Sequence<DocumentFile> = sequence {
+        val stack = ArrayDeque<Pair<DocumentFile, Int>>().apply { addLast(root to 0) }
+        while (stack.isNotEmpty()) {
+            val (node, depth) = stack.removeLast()
+            if (!node.isDirectory) continue
+            for (child in node.listFiles()) {
+                when {
+                    child.isDirectory && depth < maxDepth -> stack.addLast(child to (depth + 1))
+                    child.isFile && child.name.orEmpty().endsWith(".cbz", ignoreCase = true) -> yield(child)
+                }
+            }
+        }
+    }
+
+    private suspend fun handleApproval(
+        child: DocumentFile,
+        name: String,
+        folderUri: String,
+        notify: Boolean,
+    ) {
+        val row = pendingRepo.addIfAbsent(
+            uri = child.uri.toString(),
+            name = name,
+            sizeBytes = child.length(),
+            folderUri = folderUri,
+        )
+        // addIfAbsent returns either a fresh PENDING row or an existing one of
+        // any status — only post a notification for the former.
+        if (row.status == com.mangako.app.data.pending.PendingStatus.PENDING && notify) {
+            Notifications.postDetected(
+                context = applicationContext,
+                pendingId = row.id,
+                filename = name,
+                folder = DocumentFile.fromTreeUri(applicationContext, Uri.parse(folderUri))?.name
+                    ?: folderUri,
+            )
+        }
+    }
+
+    private fun enqueueProcess(uri: String, name: String) {
+        WorkManager.getInstance(applicationContext).enqueueUniqueWork(
+            "process_${uri.hashCode()}",
+            ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<ProcessCbzWorker>()
+                .setInputData(ProcessCbzWorker.dataFor(uri, name))
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .build(),
+        )
+    }
+
+    companion object {
+        const val UNIQUE_NAME = "mangako_watcher"
+
+        /** Depth cap for [walkCbz]. Mihon/Tachiyomi typically nest 2–3 deep; 6 is generous. */
+        private const val MAX_WALK_DEPTH = 6
+
+        /** WorkManager's minimum periodic interval. */
+        private const val SCAN_INTERVAL_MINUTES = 15L
+
+        fun schedule(context: Context) {
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                UNIQUE_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                PeriodicWorkRequestBuilder<DirectoryScanWorker>(SCAN_INTERVAL_MINUTES, TimeUnit.MINUTES)
+                    .setConstraints(
+                        Constraints.Builder()
+                            .setRequiredNetworkType(NetworkType.CONNECTED)
+                            .build(),
+                    )
+                    .build(),
+            )
+        }
+
+        fun cancel(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_NAME)
+        }
+
+        /** One-shot scan (UI "Scan now" button). */
+        fun runOnce(context: Context) {
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "mangako_watcher_once",
+                ExistingWorkPolicy.REPLACE,
+                OneTimeWorkRequestBuilder<DirectoryScanWorker>().build(),
+            )
+        }
+    }
+}

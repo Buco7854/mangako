@@ -107,6 +107,10 @@ dependencies {
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    // Hilt 2.52's KSP processor calls com.squareup.javapoet.ClassName.canonicalName()
+    // which only exists in JavaPoet 1.13+. Pinning it on the KSP classpath avoids
+    // a NoSuchMethodError when some transitive resolves an older 1.x.
+    ksp(libs.javapoet)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)

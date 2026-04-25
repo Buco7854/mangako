@@ -133,7 +133,12 @@ class PipelineExecutor(
                             StepResult.skipped(rule, input, "No match")
                         } else {
                             val groupText = match.groups[rule.group]?.value ?: match.value
-                            val removed = input.removeRange(match.range).trim()
+                            // Collapse the whitespace gap left behind by the excised tag so
+                            // "[Artist] Title (C96) [English]" doesn't end up with a double
+                            // space between "Title" and "[English]".
+                            val removed = input.removeRange(match.range)
+                                .replace(Regex("\\s{2,}"), " ")
+                                .trim()
                             val reassembled = when (rule.position) {
                                 Rule.TagRelocator.Position.FRONT -> groupText + rule.separator + removed
                                 Rule.TagRelocator.Position.BACK -> removed + rule.separator + groupText

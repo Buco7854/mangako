@@ -1,13 +1,16 @@
 package com.mangako.app.work.notify
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.mangako.app.MainActivity
 import com.mangako.app.R
 
@@ -27,6 +30,16 @@ object Notifications {
 
     // Fixed id so re-posting updates-in-place rather than stacking.
     private const val INBOX_SUMMARY_ID = 0xBA5E
+
+    /**
+     * True on API <33 (permission implicit) OR when POST_NOTIFICATIONS has been
+     * granted at runtime. Lint insists we check before every `notify()` call —
+     * runCatching isn't enough for it even though SecurityException is handled.
+     */
+    private fun canPost(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
 
 
     fun ensureChannels(context: Context) {
@@ -82,7 +95,7 @@ object Notifications {
             .addAction(R.drawable.ic_mangako_stat, context.getString(R.string.notif_detected_action_ignore), rejectIntent)
             .build()
 
-        runCatching { nm.notify(pendingId.hashCode(), notif) }
+        if (canPost(context)) runCatching { nm.notify(pendingId.hashCode(), notif) }
     }
 
     fun cancelDetected(context: Context, pendingId: String) {
@@ -121,7 +134,7 @@ object Notifications {
             .setOnlyAlertOnce(true)
             .setContentIntent(openInbox)
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify(INBOX_SUMMARY_ID, notif) }
+        if (canPost(context)) runCatching { NotificationManagerCompat.from(context).notify(INBOX_SUMMARY_ID, notif) }
     }
 
     fun cancelInboxSummary(context: Context) {

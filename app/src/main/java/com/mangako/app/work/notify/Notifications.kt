@@ -1,6 +1,7 @@
 package com.mangako.app.work.notify
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -64,6 +65,9 @@ object Notifications {
         ).forEach(nm::createNotificationChannel)
     }
 
+    // Lint can't see through canPost(); we keep the runtime check + try/catch
+    // belt-and-suspenders, so suppressing the static warning is correct.
+    @SuppressLint("MissingPermission")
     fun postDetected(context: Context, pendingId: String, filename: String, folder: String) {
         ensureChannels(context)
         val nm = NotificationManagerCompat.from(context)
@@ -108,6 +112,7 @@ object Notifications {
      * are disabled but there's still pending work — otherwise the user has no
      * cue besides the badge on the app icon.
      */
+    @SuppressLint("MissingPermission")
     fun postInboxSummary(context: Context, pendingCount: Int) {
         if (pendingCount <= 0) {
             cancelInboxSummary(context)

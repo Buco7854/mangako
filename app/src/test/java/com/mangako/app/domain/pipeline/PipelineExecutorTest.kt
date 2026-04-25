@@ -139,14 +139,16 @@ class PipelineExecutorTest {
     }
 
     @Test fun `catastrophic regex is abandoned within the timeout budget`() {
-        // (a+)+$ against 25 a's + 'b' is the classic ReDoS case. With a 200ms
-        // budget the executor should flag it skipped rather than hang.
+        // (.*a){25} against 25 a's is a polynomial-blowup ReDoS pattern that
+        // JDK 17+ does NOT short-circuit (unlike (a+)+$, which the engine now
+        // recognises and handles in linear time). With a 200ms budget the
+        // executor should flag it skipped rather than hang.
         val short = PipelineExecutor(ruleTimeoutMs = 200)
         val cfg = PipelineConfig(
-            rules = listOf(Rule.RegexReplace(id = "1", pattern = "(a+)+$", replacement = "x")),
+            rules = listOf(Rule.RegexReplace(id = "1", pattern = "(.*a){25}", replacement = "x")),
         )
         val started = System.currentTimeMillis()
-        val out = short.run(cfg, PipelineExecutor.Input("a".repeat(25) + "b"))
+        val out = short.run(cfg, PipelineExecutor.Input("a".repeat(25)))
         val elapsed = System.currentTimeMillis() - started
         assertTrue("Should return within ~1s; took $elapsed ms", elapsed < 2_000)
         assertTrue(out.steps.first().skipped)

@@ -35,11 +35,19 @@
     <string name="pipeline_empty_preview">(empty)</string>
 
     <!-- Rule list / cards -->
-    <string name="rule_reorder_cd">Reorder</string>
+    <string name="rule_reorder_cd">Drag to reorder</string>
     <string name="rule_edit_cd">Edit</string>
     <string name="rule_delete_cd">Delete</string>
     <string name="rule_cancel">Cancel</string>
     <string name="rule_save">Save</string>
+    <string name="rule_more_actions">More actions for this step</string>
+    <string name="rule_state_on">On</string>
+    <string name="rule_state_off">Off</string>
+    <string name="rule_delete_confirm_title">Delete this step?</string>
+    <string name="rule_delete_confirm_body">\"%1$s\" will be removed from your pipeline. You can\'t undo this.</string>
+
+    <!-- Pipeline steps section -->
+    <string name="pipeline_steps_header">Steps · %1$d</string>
 
     <!-- Rule editor -->
     <string name="editor_label_optional">Label (optional)</string>

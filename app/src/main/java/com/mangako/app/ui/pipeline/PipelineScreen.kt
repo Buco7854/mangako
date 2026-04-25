@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -28,6 +29,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -88,7 +90,7 @@ fun PipelineScreen(
 
     val jsonCopiedMsg = stringResource(R.string.pipeline_json_copied)
     val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
+        ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         viewModel.exportJson { json ->
@@ -99,13 +101,16 @@ fun PipelineScreen(
     }
 
     val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.OpenDocument(),
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         ctx.contentResolver.openInputStream(uri)?.use { input ->
             scope.launch { viewModel.importJson(input.bufferedReader().readText()) }
         }
     }
+
+    val rules = state.config.rules
+    val hasRules = rules.isNotEmpty()
 
     Scaffold(
         topBar = {
@@ -160,29 +165,71 @@ fun PipelineScreen(
                 },
             )
         },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { inner ->
-        Column(Modifier.padding(inner).fillMaxSize()) {
-            if (state.config.rules.isNotEmpty()) {
-                PreviewBar(
-                    filename = state.preview.input,
-                    final = state.previewedFinal,
-                    vars = state.previewedVariables,
-                    onFilenameChange = viewModel::updatePreviewInput,
+        floatingActionButton = {
+            // Only show the FAB once the user has rules — when the list is
+            // empty, the hero card's primary action already covers "add rules"
+            // and a FAB on top of the hero is redundant noise.
+            if (hasRules) {
+                ExtendedFloatingActionButton(
+                    onClick = { showAdd = true },
+                    icon = { Icon(Icons.Outlined.Add, null) },
+                    text = { Text(stringResource(R.string.pipeline_add_rule)) },
                 )
             }
-            RulesList(
-                rules = state.config.rules,
-                onMove = viewModel::move,
-                onToggle = viewModel::toggleEnabled,
-                onEdit = { editingRule = it },
-                onDelete = viewModel::remove,
+        },
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { inner ->
+        if (!hasRules) {
+            // Empty pipeline — show only the hero card. No preview to show
+            // (running a 0-rule pipeline returns the input unchanged).
+            EmptyState(
                 onLoadDefaults = viewModel::loadLanraragiDefaults,
                 onAdd = { showAdd = true },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.padding(inner).fillMaxSize(),
             )
-            if (state.config.rules.isNotEmpty()) {
-                AddRuleRow(onAdd = { showAdd = true })
+        } else {
+            val listState = rememberLazyListState()
+            val reorder = rememberReorderableLazyListState(listState) { from, to ->
+                // Subtract 2 because items 0 and 1 are the preview card and
+                // the section header — only rule items participate in reorder.
+                viewModel.move(from.index - 2, to.index - 2)
+            }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.padding(inner).fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item(key = "_preview", contentType = "preview") {
+                    PreviewCard(
+                        filename = state.preview.input,
+                        final = state.previewedFinal,
+                        vars = state.previewedVariables,
+                        onFilenameChange = viewModel::updatePreviewInput,
+                    )
+                }
+                item(key = "_steps_header", contentType = "header") {
+                    SectionHeader(stringResource(R.string.pipeline_steps_header, rules.size))
+                }
+                items(rules, key = { it.id }, contentType = { "rule" }) { rule ->
+                    ReorderableItem(reorder, key = rule.id) { dragging ->
+                        RuleCard(
+                            rule = rule,
+                            dragging = dragging,
+                            onToggle = { viewModel.toggleEnabled(rule.id) },
+                            onEdit = { editingRule = rule },
+                            onDelete = { viewModel.remove(rule.id) },
+                            dragHandle = {
+                                IconButton(modifier = Modifier.draggableHandle(), onClick = {}) {
+                                    Icon(
+                                        Icons.Outlined.DragHandle,
+                                        contentDescription = stringResource(R.string.rule_reorder_cd),
+                                    )
+                                }
+                            },
+                        )
+                    }
+                }
             }
         }
     }
@@ -231,20 +278,24 @@ fun PipelineScreen(
 }
 
 @Composable
-private fun PreviewBar(
+private fun PreviewCard(
     filename: String,
     final: String,
     vars: Map<String, String>,
     onFilenameChange: (String) -> Unit,
 ) {
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(stringResource(R.string.pipeline_live_preview), style = MaterialTheme.typography.labelLarge)
+            Text(
+                stringResource(R.string.pipeline_live_preview),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = filename,
@@ -283,45 +334,12 @@ private fun PreviewBar(
 }
 
 @Composable
-private fun RulesList(
-    rules: List<Rule>,
-    onMove: (Int, Int) -> Unit,
-    onToggle: (String) -> Unit,
-    onEdit: (Rule) -> Unit,
-    onDelete: (String) -> Unit,
-    onLoadDefaults: () -> Unit,
-    onAdd: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    if (rules.isEmpty()) {
-        EmptyState(onLoadDefaults, onAdd, modifier)
-        return
-    }
-    val listState = rememberLazyListState()
-    val reorder = rememberReorderableLazyListState(listState) { from, to ->
-        onMove(from.index, to.index)
-    }
-    LazyColumn(
-        state = listState,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier.fillMaxSize(),
-    ) {
-        items(rules, key = { it.id }) { rule ->
-            ReorderableItem(reorder, key = rule.id) { dragging ->
-                RuleCard(
-                    rule = rule,
-                    dragging = dragging,
-                    onToggle = { onToggle(rule.id) },
-                    onEdit = { onEdit(rule) },
-                    onDelete = { onDelete(rule.id) },
-                    dragHandle = {
-                        IconButton(modifier = Modifier.draggableHandle(), onClick = {}) {
-                            Icon(Icons.Outlined.DragHandle, contentDescription = stringResource(R.string.rule_reorder_cd))
-                        }
-                    },
-                )
-            }
-        }
-    }
+private fun SectionHeader(text: String) {
+    Text(
+        text,
+        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary,
+    )
 }

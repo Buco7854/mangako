@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -96,7 +95,6 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
     val pendingCount by viewModel.pendingCount.collectAsState(initial = 0)
 
     val destinations = listOf(
-        Dest("pipeline", stringResource(R.string.nav_pipeline)) { Icon(Icons.Outlined.Tune, null) },
         Dest("inbox", stringResource(R.string.nav_inbox)) {
             BadgedBox(badge = {
                 if (pendingCount > 0) Badge { Text(pendingCount.toString()) }
@@ -132,13 +130,19 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
     ) { inner ->
         NavHost(
             navController = nav,
-            startDestination = "pipeline",
+            startDestination = "inbox",
             modifier = Modifier.padding(inner),
         ) {
-            composable("pipeline") { PipelineScreen() }
-            composable("inbox") { InboxScreen() }
+            composable("inbox") {
+                InboxScreen(onOpenSettings = { nav.navigate("settings") })
+            }
             composable("history") { HistoryScreen(onOpen = { id -> nav.navigate("history/$id") }) }
-            composable("settings") { SettingsScreen() }
+            composable("settings") {
+                SettingsScreen(onOpenPipeline = { nav.navigate("settings/pipeline") })
+            }
+            composable("settings/pipeline") {
+                PipelineScreen(onBack = { nav.popBackStack() })
+            }
             composable("history/{id}") { entry ->
                 val id = entry.arguments?.getString("id").orEmpty()
                 HistoryDetailScreen(historyId = id, onBack = { nav.popBackStack() })

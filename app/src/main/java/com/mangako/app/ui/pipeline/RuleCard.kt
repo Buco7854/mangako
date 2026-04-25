@@ -22,11 +22,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mangako.app.R
 import com.mangako.app.domain.rule.Rule
+import com.mangako.app.ui.format.humanSubtitle
+import com.mangako.app.ui.format.humanTitle
 
 @Composable
 fun RuleCard(
@@ -56,16 +57,15 @@ fun RuleCard(
             dragHandle()
             Column(Modifier.weight(1f)) {
                 Text(
-                    rule.displayName(),
+                    rule.humanTitle(),
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.titleSmall,
                     color = if (rule.enabled) MaterialTheme.colorScheme.onSurface
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    rule.describe(),
+                    rule.humanSubtitle(),
                     style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

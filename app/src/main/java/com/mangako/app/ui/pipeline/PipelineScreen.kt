@@ -15,12 +15,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -59,7 +64,10 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
+fun PipelineScreen(
+    onBack: () -> Unit = {},
+    viewModel: PipelineViewModel = hiltViewModel(),
+) {
     val state by viewModel.ui.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -68,6 +76,7 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
 
     var showAdd by remember { mutableStateOf(false) }
     var showImport by remember { mutableStateOf(false) }
+    var showOverflow by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf<Rule?>(null) }
 
     LaunchedEffect(state.message) {
@@ -101,22 +110,52 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name), fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.pipeline_title), fontWeight = FontWeight.SemiBold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Outlined.ArrowBack, stringResource(R.string.pipeline_back_cd))
+                    }
+                },
                 actions = {
-                    IconButton(onClick = { exportLauncher.launch("mangako-pipeline.json") }) {
-                        Icon(Icons.Outlined.FileDownload, stringResource(R.string.pipeline_export))
+                    IconButton(onClick = { showOverflow = true }) {
+                        Icon(Icons.Outlined.MoreVert, stringResource(R.string.pipeline_overflow_cd))
                     }
-                    IconButton(onClick = {
-                        viewModel.exportJson { json ->
-                            clipboard.setText(AnnotatedString(json))
-                            scope.launch { snackbar.showSnackbar(jsonCopiedMsg) }
-                        }
-                    }) { Icon(Icons.Outlined.FileDownload, stringResource(R.string.pipeline_copy_json)) }
-                    IconButton(onClick = { showImport = true }) {
-                        Icon(Icons.Outlined.FileUpload, stringResource(R.string.pipeline_import))
-                    }
-                    IconButton(onClick = { viewModel.loadLanraragiDefaults() }) {
-                        Icon(Icons.Outlined.AutoAwesome, stringResource(R.string.pipeline_load_defaults_cd))
+                    DropdownMenu(expanded = showOverflow, onDismissRequest = { showOverflow = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pipeline_load_defaults_cd)) },
+                            leadingIcon = { Icon(Icons.Outlined.AutoAwesome, null) },
+                            onClick = {
+                                showOverflow = false
+                                viewModel.loadLanraragiDefaults()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pipeline_import)) },
+                            leadingIcon = { Icon(Icons.Outlined.FileUpload, null) },
+                            onClick = {
+                                showOverflow = false
+                                showImport = true
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pipeline_export)) },
+                            leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
+                            onClick = {
+                                showOverflow = false
+                                exportLauncher.launch("mangako-pipeline.json")
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pipeline_copy_json)) },
+                            leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) },
+                            onClick = {
+                                showOverflow = false
+                                viewModel.exportJson { json ->
+                                    clipboard.setText(AnnotatedString(json))
+                                    scope.launch { snackbar.showSnackbar(jsonCopiedMsg) }
+                                }
+                            },
+                        )
                     }
                 },
             )
@@ -124,12 +163,14 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
         snackbarHost = { SnackbarHost(snackbar) },
     ) { inner ->
         Column(Modifier.padding(inner).fillMaxSize()) {
-            PreviewBar(
-                filename = state.preview.input,
-                final = state.previewedFinal,
-                vars = state.previewedVariables,
-                onFilenameChange = viewModel::updatePreviewInput,
-            )
+            if (state.config.rules.isNotEmpty()) {
+                PreviewBar(
+                    filename = state.preview.input,
+                    final = state.previewedFinal,
+                    vars = state.previewedVariables,
+                    onFilenameChange = viewModel::updatePreviewInput,
+                )
+            }
             RulesList(
                 rules = state.config.rules,
                 onMove = viewModel::move,
@@ -140,7 +181,9 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
                 onAdd = { showAdd = true },
                 modifier = Modifier.weight(1f),
             )
-            AddRuleRow(onAdd = { showAdd = true })
+            if (state.config.rules.isNotEmpty()) {
+                AddRuleRow(onAdd = { showAdd = true })
+            }
         }
     }
 

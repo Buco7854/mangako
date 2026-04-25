@@ -3,6 +3,7 @@ package com.mangako.app.ui.settings
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,9 +16,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +29,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -54,9 +58,13 @@ import com.mangako.app.data.settings.SettingsRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    onOpenPipeline: () -> Unit = {},
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val test by viewModel.testResult.collectAsStateWithLifecycle()
+    val ruleCount by viewModel.pipelineRuleCount.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
 
@@ -226,6 +234,29 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     stringResource(R.string.settings_debounce_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Section(stringResource(R.string.settings_section_rules)) {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_rules_edit)) },
+                    supportingContent = {
+                        Text(
+                            when {
+                                ruleCount == 0 -> stringResource(R.string.settings_rules_summary_none)
+                                ruleCount == 1 -> stringResource(R.string.settings_rules_summary_one)
+                                else -> stringResource(R.string.settings_rules_summary_other, ruleCount)
+                            },
+                        )
+                    },
+                    leadingContent = { Icon(Icons.Outlined.Tune, null) },
+                    trailingContent = { Icon(Icons.Outlined.ChevronRight, null) },
+                    colors = ListItemDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenPipeline),
                 )
             }
         }

@@ -3,17 +3,28 @@
     <string name="app_name">Mangako</string>
 
     <!-- Navigation -->
-    <string name="nav_pipeline">Pipeline</string>
     <string name="nav_inbox">Inbox</string>
     <string name="nav_history">History</string>
     <string name="nav_settings">Settings</string>
 
+    <!-- Settings → rename rules entry -->
+    <string name="settings_section_rules">Renaming</string>
+    <string name="settings_rules_summary_one">1 rule active</string>
+    <string name="settings_rules_summary_other">%1$d rules active</string>
+    <string name="settings_rules_summary_none">No rules yet — files will keep their original names</string>
+    <string name="settings_rules_edit">Edit rename rules</string>
+
     <!-- Pipeline screen -->
-    <string name="pipeline_live_preview">Live Preview</string>
-    <string name="pipeline_input_filename">Input filename</string>
-    <string name="pipeline_empty_title">Pipeline is empty</string>
-    <string name="pipeline_empty_subtitle">Add rules one by one, or start with the LANraragi standard.</string>
-    <string name="pipeline_lanraragi_standard">LANraragi Standard</string>
+    <string name="pipeline_title">Edit rename rules</string>
+    <string name="pipeline_back_cd">Back to settings</string>
+    <string name="pipeline_overflow_cd">More actions</string>
+    <string name="pipeline_live_preview">Live preview</string>
+    <string name="pipeline_live_preview_hint">Type a sample filename to see what your rules would produce.</string>
+    <string name="pipeline_input_filename">Sample filename</string>
+    <string name="pipeline_hero_title">Rename your manga downloads</string>
+    <string name="pipeline_hero_body">Mangako can apply the LANraragi naming convention out of the box, or you can build your own renaming rules step by step.</string>
+    <string name="pipeline_hero_use_standard">Use the LANraragi standard</string>
+    <string name="pipeline_hero_build_own">Or build your own</string>
     <string name="pipeline_add_rule">Add rule</string>
     <string name="pipeline_copy_json">Copy JSON</string>
     <string name="pipeline_export">Export</string>
@@ -77,35 +88,41 @@
 
     <!-- Inbox -->
     <string name="inbox_scan_now_cd">Scan now</string>
-    <string name="inbox_empty_title">Inbox is empty</string>
-    <string name="inbox_empty_subtitle">New .cbz files from your watched folders will show up here.</string>
-    <string name="inbox_pending_count">%1$d pending</string>
+    <string name="inbox_empty_title">Nothing waiting</string>
+    <string name="inbox_empty_subtitle">When new .cbz files appear in your watched folders, they\'ll show up here for review.</string>
+    <string name="inbox_pending_count">%1$d waiting for review</string>
     <string name="inbox_ignore_all">Ignore all</string>
     <string name="inbox_process_all">Process all</string>
     <string name="inbox_ignore">Ignore</string>
     <string name="inbox_process">Process</string>
+    <string name="inbox_rename_to">Will be renamed to</string>
+    <string name="inbox_setup_title">Finish setting up Mangako</string>
+    <string name="inbox_setup_body">Connect your LANraragi server and pick at least one folder to watch before Mangako can pick up new downloads.</string>
+    <string name="inbox_setup_open_settings">Open settings</string>
+    <string name="inbox_setup_step_server">Connect your LANraragi server</string>
+    <string name="inbox_setup_step_folder">Pick a folder to watch</string>
+    <string name="inbox_setup_step_rules">Add at least one renaming rule</string>
+    <string name="inbox_setup_step_done">Done</string>
 
     <!-- History -->
     <string name="history_title">History</string>
     <string name="history_clear_cd">Clear history</string>
-    <string name="history_empty">No processed files yet.</string>
-    <string name="history_detail_title">Audit log</string>
+    <string name="history_empty">Nothing here yet — Mangako will record every file it processes.</string>
+    <string name="history_detail_title">What Mangako did</string>
     <string name="history_detail_back_cd">Back</string>
-    <string name="history_label_original">Original</string>
-    <string name="history_label_final">Final</string>
-    <string name="history_ran_in">%1$s · ran in %2$d ms</string>
-    <string name="history_section_rules">Rules</string>
-    <string name="history_section_upload">Final upload</string>
+    <string name="history_label_original">Started with</string>
+    <string name="history_label_final">Renamed to</string>
+    <string name="history_ran_in">%1$s · took %2$d ms</string>
+    <string name="history_section_rules">Step by step</string>
+    <string name="history_section_upload">Upload</string>
     <string name="history_loading">Loading…</string>
-    <string name="history_step_header">Step %1$d · %2$s</string>
-    <string name="history_step_skipped">⤷ skipped: %1$s</string>
-    <string name="history_step_noop">⤷ no-op (output matches input)</string>
+    <string name="history_step_header">%1$d. %2$s</string>
     <string name="history_step_duration_ms">%1$d ms</string>
-    <string name="history_upload_success">Upload: Success (HTTP %1$d)</string>
+    <string name="history_upload_success">Uploaded successfully (HTTP %1$d)</string>
     <string name="history_upload_fail">Upload failed</string>
     <string name="history_upload_fail_code">Upload failed (HTTP %1$d)</string>
-    <string name="history_source_deleted">Source file deleted.</string>
-    <string name="history_source_kept">Source file kept (delete-on-success is off).</string>
+    <string name="history_source_deleted">The original file was deleted from your device.</string>
+    <string name="history_source_kept">The original file is still on your device.</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>

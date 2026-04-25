@@ -10,15 +10,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -41,15 +48,17 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mangako.app.R
-import com.mangako.app.data.pending.PendingFile
 import com.mangako.app.work.DirectoryScanWorker
 import java.text.DateFormat
 import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InboxScreen(viewModel: InboxViewModel = hiltViewModel()) {
-    val items by viewModel.items.collectAsStateWithLifecycle()
+fun InboxScreen(
+    onOpenSettings: () -> Unit = {},
+    viewModel: InboxViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
 
     Scaffold(
@@ -65,12 +74,17 @@ fun InboxScreen(viewModel: InboxViewModel = hiltViewModel()) {
         },
     ) { inner ->
         Column(Modifier.padding(inner).fillMaxSize()) {
-            if (items.isEmpty()) {
-                EmptyInbox()
+            if (!state.setup.isComplete) {
+                SetupBanner(setup = state.setup, onOpenSettings = onOpenSettings)
+            }
+
+            if (state.items.isEmpty()) {
+                EmptyInbox(modifier = Modifier.weight(1f))
                 return@Scaffold
             }
+
             BulkBar(
-                count = items.size,
+                count = state.items.size,
                 onApproveAll = viewModel::approveAll,
                 onRejectAll = viewModel::rejectAll,
             )
@@ -79,11 +93,11 @@ fun InboxScreen(viewModel: InboxViewModel = hiltViewModel()) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(items, key = { it.id }) { file ->
+                items(state.items, key = { it.file.id }) { item ->
                     PendingCard(
-                        file = file,
-                        onApprove = { viewModel.approve(file) },
-                        onReject = { viewModel.reject(file) },
+                        item = item,
+                        onApprove = { viewModel.approve(item.file) },
+                        onReject = { viewModel.reject(item.file) },
                     )
                 }
             }
@@ -92,18 +106,82 @@ fun InboxScreen(viewModel: InboxViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun EmptyInbox() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+private fun SetupBanner(setup: InboxViewModel.SetupStatus, onOpenSettings: () -> Unit) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                stringResource(R.string.inbox_setup_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.inbox_setup_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+            Spacer(Modifier.height(12.dp))
+            SetupStep(stringResource(R.string.inbox_setup_step_server), done = setup.serverConnected)
+            SetupStep(stringResource(R.string.inbox_setup_step_folder), done = setup.foldersConfigured)
+            SetupStep(stringResource(R.string.inbox_setup_step_rules), done = setup.rulesConfigured)
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.inbox_setup_open_settings))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SetupStep(label: String, done: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    ) {
+        Icon(
+            imageVector = if (done) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+            contentDescription = null,
+            tint = if (done) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onTertiaryContainer,
+        )
+    }
+}
+
+@Composable
+private fun EmptyInbox(modifier: Modifier = Modifier) {
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Outlined.Inbox,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(48.dp),
+            )
+            Spacer(Modifier.height(12.dp))
             Text(
                 stringResource(R.string.inbox_empty_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
+            Spacer(Modifier.height(4.dp))
             Text(
                 stringResource(R.string.inbox_empty_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 32.dp),
             )
         }
     }
@@ -130,10 +208,11 @@ private fun BulkBar(count: Int, onApproveAll: () -> Unit, onRejectAll: () -> Uni
 
 @Composable
 private fun PendingCard(
-    file: PendingFile,
+    item: InboxViewModel.InboxItem,
     onApprove: () -> Unit,
     onReject: () -> Unit,
 ) {
+    val file = item.file
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -147,7 +226,32 @@ private fun PendingCard(
                 overflow = TextOverflow.Ellipsis,
                 fontFamily = FontFamily.Monospace,
             )
-            Spacer(Modifier.height(4.dp))
+            if (item.previewedFinal != file.name) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    stringResource(R.string.inbox_rename_to),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.ArrowForward,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        item.previewedFinal,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
             Text(
                 "${humanSize(file.sizeBytes)} · ${DateFormat.getDateTimeInstance().format(Date(file.detectedAt))}",
                 style = MaterialTheme.typography.bodySmall,
@@ -160,7 +264,7 @@ private fun PendingCard(
                     Spacer(Modifier.width(6.dp))
                     Text(stringResource(R.string.inbox_ignore))
                 }
-                FilledTonalButton(onClick = onApprove, modifier = Modifier.weight(1f)) {
+                Button(onClick = onApprove, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Outlined.Check, null)
                     Spacer(Modifier.width(6.dp))
                     Text(stringResource(R.string.inbox_process))

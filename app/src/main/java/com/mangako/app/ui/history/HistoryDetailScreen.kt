@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mangako.app.R
 import com.mangako.app.domain.pipeline.AuditStep
 import com.mangako.app.domain.pipeline.AuditTrail
+import com.mangako.app.ui.format.humanize
 import java.text.DateFormat
 import java.util.Date
 
@@ -132,6 +133,7 @@ private fun SectionHeader(text: String) {
 @Composable
 private fun StepCard(step: AuditStep) {
     val indent = (step.depth.coerceAtMost(4) * 16).dp
+    val human = step.humanize()
     Card(
         modifier = Modifier.fillMaxWidth().padding(start = indent),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -140,41 +142,29 @@ private fun StepCard(step: AuditStep) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StepBadge(step)
                 Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.history_step_header, step.index + 1, step.ruleLabel),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        step.ruleType,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Text(stringResource(R.string.history_step_duration_ms, step.durationMs), style = MaterialTheme.typography.labelSmall)
+                Text(
+                    stringResource(R.string.history_step_header, step.index + 1, human.title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    stringResource(R.string.history_step_duration_ms, step.durationMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Spacer(Modifier.height(8.dp))
-            when {
-                step.skipped -> Text(
-                    stringResource(R.string.history_step_skipped, step.skippedReason.orEmpty()),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                !step.changed -> Text(
-                    stringResource(R.string.history_step_noop),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                else -> {
-                    Mono(step.before)
-                    Text(" ↓ ", style = MaterialTheme.typography.bodySmall)
-                    Mono(step.after, accent = true)
-                }
-            }
-            step.note?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                human.verdict,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (step.changed && !step.skipped) {
+                Spacer(Modifier.height(8.dp))
+                Mono(step.before)
+                Text(" ↓ ", style = MaterialTheme.typography.bodySmall)
+                Mono(step.after, accent = true)
             }
         }
     }

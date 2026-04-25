@@ -18,7 +18,8 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -44,29 +45,49 @@ fun EmptyState(
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                stringResource(R.string.pipeline_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                stringResource(R.string.pipeline_empty_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(20.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = onLoadDefaults) {
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        ElevatedCard(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(
+                    Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    stringResource(R.string.pipeline_hero_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    stringResource(R.string.pipeline_hero_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onLoadDefaults,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Icon(Icons.Outlined.AutoAwesome, null)
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.pipeline_lanraragi_standard))
+                    Text(stringResource(R.string.pipeline_hero_use_standard))
                 }
-                OutlinedButton(onClick = onAdd) {
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onAdd, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.Add, null)
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.pipeline_add_rule))
+                    Text(stringResource(R.string.pipeline_hero_build_own))
                 }
             }
         }
@@ -98,6 +119,7 @@ fun AddRuleDialog(onDismiss: () -> Unit, onPick: (RuleKind) -> Unit) {
                 RuleKind.values().forEach { kind ->
                     ListItem(
                         headlineContent = { Text(stringResource(kind.labelRes)) },
+                        supportingContent = { Text(kind.humanBlurb()) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 2.dp)
@@ -107,6 +129,17 @@ fun AddRuleDialog(onDismiss: () -> Unit, onPick: (RuleKind) -> Unit) {
             }
         },
     )
+}
+
+private fun RuleKind.humanBlurb(): String = when (this) {
+    RuleKind.ExtractXml -> "Read Title, Series, Writer, etc. from ComicInfo.xml so other rules can use them."
+    RuleKind.ExtractRegex -> "Pull a value out of one variable into another (e.g. language out of Summary)."
+    RuleKind.Regex -> "Find text matching a pattern and replace it."
+    RuleKind.Append -> "Add text to the end of the filename."
+    RuleKind.Prepend -> "Add text to the start of the filename."
+    RuleKind.Relocator -> "Move a tag like (C96) to the front or back of the filename."
+    RuleKind.Conditional -> "Run different rules depending on a condition."
+    RuleKind.CleanWs -> "Collapse double spaces and trim the ends."
 }
 
 @Composable

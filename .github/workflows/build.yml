@@ -47,6 +47,17 @@ jobs:
       - name: Lint
         run: ./gradlew lintDebug --stacktrace --no-daemon
 
+      - name: Print lint failures
+        if: failure()
+        run: |
+          for f in app/build/reports/lint-results-*.txt app/build/reports/lint-results-*.xml; do
+            if [ -f "$f" ]; then
+              echo "::group::$f"
+              cat "$f"
+              echo "::endgroup::"
+            fi
+          done
+
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --stacktrace --no-daemon
 
@@ -56,6 +67,17 @@ jobs:
         with:
           name: test-reports
           path: app/build/reports/tests/**/*
+          if-no-files-found: ignore
+
+      - name: Upload lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: |
+            app/build/reports/lint-results-*.html
+            app/build/reports/lint-results-*.xml
+            app/build/reports/lint-results-*.txt
           if-no-files-found: ignore
 
       - name: Assemble debug

@@ -50,12 +50,14 @@ jobs:
       - name: Print lint failures
         if: failure()
         run: |
-          for f in app/build/reports/lint-results-*.txt app/build/reports/lint-results-*.xml; do
-            if [ -f "$f" ]; then
-              echo "::group::$f"
-              cat "$f"
-              echo "::endgroup::"
-            fi
+          echo "=== reports dir ==="
+          ls -la app/build/reports/ 2>/dev/null || echo "(no reports dir)"
+          echo "=== lint files ==="
+          find app/build/reports -name 'lint-results-*' -print 2>/dev/null || true
+          for f in $(find app/build/reports -name 'lint-results-*.xml' 2>/dev/null); do
+            echo "::group::$f"
+            cat "$f"
+            echo "::endgroup::"
           done
 
       - name: Unit tests

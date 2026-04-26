@@ -125,6 +125,11 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
     val hasRules = rules.isNotEmpty()
 
     Scaffold(
+        // Match the bottom nav's tone so the area between the last card and
+        // the nav bar reads as one continuous surface — previously the body
+        // was the (lighter) background tone and the cards visually "floated"
+        // above the nav bar with a stripe of mismatched colour between them.
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         topBar = {
             TopAppBar(
                 title = {
@@ -233,13 +238,9 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
             } else {
                 LazyColumn(
                     modifier = Modifier.padding(inner).fillMaxSize(),
-                    // Top + horizontal breathing room. Bottom is intentionally
-                    // small so the rules occupy the full area down to the
-                    // bottom navigation bar — the FAB overlaps the bottom-
-                    // right corner of the last card when scrolled, which is
-                    // the standard Material behaviour and avoids the dead
-                    // 'card-zone-floating-above-the-bar' look.
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
+                    // No bottom padding — last card's bottom edge meets the
+                    // bottom navigation bar's top edge, no dead band between.
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 0.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(rules, key = { it.id }) { rule ->
@@ -503,7 +504,7 @@ private fun ReorderableRulesList(
     LazyColumn(
         state = listState,
         modifier = modifier,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 0.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         items(rules, key = { it.id }) { rule ->

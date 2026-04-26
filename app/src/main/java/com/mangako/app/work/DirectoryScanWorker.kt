@@ -260,5 +260,23 @@ class DirectoryScanWorker @AssistedInject constructor(
                     .build(),
             )
         }
+
+        /**
+         * Scan if (and only if) the watcher is enabled. Used by MainActivity
+         * on app resume — when the user comes back to Mangako after
+         * downloading something via another app, the SAF DocumentsProvider
+         * may have skipped notifying our content-uri trigger (most
+         * downloaders write through the underlying filesystem, not via
+         * DocumentsContract), so a synchronous catch-up scan on resume is
+         * what consistently picks them up. The worker itself checks
+         * watcherEnabled and bails if the user has the watcher toggled off.
+         */
+        fun runIfWatching(context: Context) {
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "mangako_watcher_resume",
+                ExistingWorkPolicy.REPLACE,
+                OneTimeWorkRequestBuilder<DirectoryScanWorker>().build(),
+            )
+        }
     }
 }

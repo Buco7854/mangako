@@ -24,12 +24,17 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -94,6 +99,24 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
     val backStack by nav.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val pendingCount by viewModel.pendingCount.collectAsState(initial = 0)
+
+    // Scan watched folders whenever the app comes back to the foreground.
+    // SAF content-uri triggers don't fire when downloaders (Mihon, browsers,
+    // etc.) write directly to the filesystem rather than through the
+    // DocumentsProvider's API — which is the common case. The user's
+    // mental model is "I downloaded a file, now I open Mangako and expect
+    // to see it"; a scan on resume makes that mental model match reality.
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                com.mangako.app.work.DirectoryScanWorker.runIfWatching(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val destinations = listOf(
         Dest("inbox", stringResource(R.string.nav_inbox)) {

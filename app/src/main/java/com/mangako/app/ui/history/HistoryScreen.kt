@@ -55,6 +55,7 @@ fun HistoryScreen(
     val items by viewModel.items.collectAsStateWithLifecycle()
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.history_title), fontWeight = FontWeight.SemiBold) },

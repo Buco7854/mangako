@@ -73,6 +73,7 @@ fun InboxScreen(
     val scanDisabledMsg = stringResource(R.string.inbox_scanning_disabled)
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.nav_inbox), fontWeight = FontWeight.SemiBold) },

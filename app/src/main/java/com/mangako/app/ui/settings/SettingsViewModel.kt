@@ -43,23 +43,27 @@ class SettingsViewModel @Inject constructor(
 
     fun setWatcherEnabled(v: Boolean) = viewModelScope.launch {
         repo.update { it.copy(watcherEnabled = v) }
-        if (v) DirectoryScanWorker.schedule(context) else DirectoryScanWorker.cancel(context)
+        reschedule()
     }
 
     /**
      * Adds the folder and, if this is the very first watched folder, also
-     * enables the background watcher and schedules its periodic worker so
-     * the user's first download Just Works. Adding a folder without the
-     * watcher running is the most common 'why didn't anything happen?'
-     * trap; opting them in here matches the implicit intent.
+     * enables the background watcher so the user's first download Just
+     * Works. Adding a folder without the watcher running is the most common
+     * 'why didn't anything happen?' trap; opting them in here matches the
+     * implicit intent.
+     *
+     * Always reschedules — the observer needs the latest URI list as
+     * content-uri triggers, so adding a new folder must re-arm the observer
+     * with the wider set.
      */
     fun addFolder(uri: String) = viewModelScope.launch {
         val before = repo.flow.first()
         repo.addWatchFolder(uri)
         if (before.watchFolderUris.isEmpty() && !before.watcherEnabled) {
             repo.update { it.copy(watcherEnabled = true) }
-            DirectoryScanWorker.schedule(context)
         }
+        reschedule()
     }
 
     /**
@@ -74,6 +78,23 @@ class SettingsViewModel @Inject constructor(
                 Uri.parse(uri),
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
+        }
+        // The content-uri observer was armed for the old URI set; re-arm with
+        // what's left, or cancel entirely if nothing remains to watch.
+        reschedule()
+    }
+
+    /**
+     * Re-applies the current settings to the WorkManager schedule. Centralised
+     * so every settings mutation that affects watching (toggle, add, remove)
+     * uses the same logic.
+     */
+    private suspend fun reschedule() {
+        val settings = repo.flow.first()
+        if (settings.watcherEnabled && settings.watchFolderUris.isNotEmpty()) {
+            DirectoryScanWorker.schedule(context, settings.watchFolderUris)
+        } else {
+            DirectoryScanWorker.cancel(context)
         }
     }
     fun scanNow() = DirectoryScanWorker.runOnce(context)

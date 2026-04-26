@@ -49,9 +49,29 @@ class DirectoryScanWorker @AssistedInject constructor(
         // periodic scheduler does NOT set it, so a watcher that's been
         // explicitly turned off still stays off in the background.
         val manual = inputData.getBoolean(KEY_MANUAL, false)
-        if (settings.watchFolderUris.isEmpty()) return@withContext Result.success()
-        if (!manual && !settings.watcherEnabled) return@withContext Result.success()
+        if (settings.watchFolderUris.isEmpty()) {
+            return@withContext Result.success()
+        }
+        if (!manual && !settings.watcherEnabled) {
+            return@withContext Result.success()
+        }
 
+        try {
+            scanFolders(settings)
+            Result.success()
+        } finally {
+            // Re-arm the content-uri-trigger observer so the worker wakes
+            // again the next time the SAF tree changes. WorkManager consumes
+            // the trigger after firing, so without this we'd only get one
+            // event-driven run before the worker fell back to the periodic
+            // 15-minute schedule.
+            if (!manual && settings.watcherEnabled && settings.watchFolderUris.isNotEmpty()) {
+                scheduleObserver(applicationContext, settings.watchFolderUris)
+            }
+        }
+    }
+
+    private suspend fun scanFolders(settings: SettingsRepository.Settings) {
         for (folderUri in settings.watchFolderUris) {
             val folder = DocumentFile.fromTreeUri(applicationContext, Uri.parse(folderUri))
             if (folder == null || !folder.isDirectory) continue
@@ -81,7 +101,6 @@ class DirectoryScanWorker @AssistedInject constructor(
         } else {
             Notifications.cancelInboxSummary(applicationContext)
         }
-        Result.success()
     }
 
     /**
@@ -147,34 +166,89 @@ class DirectoryScanWorker @AssistedInject constructor(
 
     companion object {
         const val UNIQUE_NAME = "mangako_watcher"
+        private const val OBSERVER_UNIQUE_NAME = "mangako_watcher_observer"
 
         /** Depth cap for [walkCbz]. Mihon/Tachiyomi typically nest 2–3 deep; 6 is generous. */
         private const val MAX_WALK_DEPTH = 6
 
-        /** WorkManager's minimum periodic interval. */
+        /** Periodic safety-net interval (WorkManager minimum is 15 min). */
         private const val SCAN_INTERVAL_MINUTES = 15L
 
-        fun schedule(context: Context) {
+        /** Marker on the [WorkerParameters.inputData] that distinguishes a user-
+         *  initiated "Scan now" from the periodic / observer-triggered runs.
+         *  When set, the scan runs even if the persistent watcher toggle is off. */
+        const val KEY_MANUAL = "manual"
+
+        /**
+         * Set up both the event-driven observer and the periodic safety-net.
+         * Call this from anywhere settings affecting the watcher change
+         * (folder list mutations, watcher toggle on, etc.). It's idempotent —
+         * existing workers are replaced with the latest URI list.
+         */
+        fun schedule(context: Context, watchFolderUris: Set<String>) {
+            schedulePeriodic(context)
+            scheduleObserver(context, watchFolderUris)
+        }
+
+        /**
+         * Periodic safety net. Runs every 15 minutes even if no content-uri
+         * triggers fire — guards against DocumentsProviders that don't notify
+         * on change (some third-party file managers).
+         *
+         * No network constraint: scanning is a local-disk operation, so
+         * requiring CONNECTED would gate the worker offline. Upload still
+         * keeps its own network constraint inside ProcessCbzWorker.
+         */
+        private fun schedulePeriodic(context: Context) {
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
-                // No network constraint: scanning watched folders is a local-
-                // disk operation, so requiring CONNECTED would cause the worker
-                // to silently sit out whenever the user is offline (or
-                // misreports their state to WorkManager). The actual upload
-                // step in ProcessCbzWorker keeps its own network constraint.
                 PeriodicWorkRequestBuilder<DirectoryScanWorker>(SCAN_INTERVAL_MINUTES, TimeUnit.MINUTES).build(),
+            )
+        }
+
+        /**
+         * Event-driven observer. Wakes the worker within seconds of a watched
+         * SAF tree changing (file added / renamed / removed) instead of
+         * waiting for the next periodic tick.
+         *
+         * Implementation: a one-shot work request with content-uri triggers
+         * for each folder. WorkManager consumes the trigger after firing, so
+         * the worker re-arms itself at the end of doWork() to keep listening.
+         *
+         * Caveats:
+         *  - Triggers only fire when the underlying [DocumentsProvider]
+         *    notifies via [ContentResolver.notifyChange]. Standard providers
+         *    (DownloadProvider, ExternalStorageProvider) do; some third-party
+         *    file managers don't. The periodic schedule above is the fallback
+         *    for those.
+         *  - The 3-second debounce avoids re-running mid-file-write while a
+         *    download is still streaming bytes.
+         */
+        private fun scheduleObserver(context: Context, watchFolderUris: Set<String>) {
+            if (watchFolderUris.isEmpty()) return
+            val constraints = Constraints.Builder()
+                .apply {
+                    watchFolderUris.forEach { uri ->
+                        runCatching { addContentUriTrigger(Uri.parse(uri), true) }
+                    }
+                }
+                .setTriggerContentUpdateDelay(3, TimeUnit.SECONDS)
+                .setTriggerContentMaxDelay(15, TimeUnit.MINUTES)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                OBSERVER_UNIQUE_NAME,
+                ExistingWorkPolicy.REPLACE,
+                OneTimeWorkRequestBuilder<DirectoryScanWorker>()
+                    .setConstraints(constraints)
+                    .build(),
             )
         }
 
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_NAME)
+            WorkManager.getInstance(context).cancelUniqueWork(OBSERVER_UNIQUE_NAME)
         }
-
-        /** Marker on the [WorkerParameters.inputData] that distinguishes a user-
-         *  initiated "Scan now" from the periodic scheduler. When set, the
-         *  scan runs even if the persistent watcher toggle is off. */
-        const val KEY_MANUAL = "manual"
 
         /** One-shot scan (UI "Scan now" button). */
         fun runOnce(context: Context) {

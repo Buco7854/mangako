@@ -2,8 +2,6 @@ package com.mangako.app.ui.pipeline
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,12 +22,11 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DragHandle
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Reorder
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
@@ -85,6 +81,7 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
     var showAdd by remember { mutableStateOf(false) }
     var showImport by remember { mutableStateOf(false) }
     var showOverflow by remember { mutableStateOf(false) }
+    var showTrySheet by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf<Rule?>(null) }
     var reorderMode by remember { mutableStateOf(false) }
 
@@ -145,6 +142,14 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
                             Icon(Icons.Outlined.Check, stringResource(R.string.pipeline_reorder_done))
                         }
                     } else {
+                        if (hasRules) {
+                            IconButton(onClick = { showTrySheet = true }) {
+                                Icon(
+                                    Icons.Outlined.PlayArrow,
+                                    stringResource(R.string.pipeline_try_cd),
+                                )
+                            }
+                        }
                         IconButton(onClick = { showOverflow = true }) {
                             Icon(Icons.Outlined.MoreVert, stringResource(R.string.pipeline_overflow_cd))
                         }
@@ -219,47 +224,57 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
                 modifier = Modifier.padding(inner).fillMaxSize(),
             )
         } else {
-            Column(Modifier.padding(inner).fillMaxSize()) {
-                PreviewBar(
-                    filename = state.preview.input,
-                    final = state.previewedFinal,
-                    vars = state.previewedVariables,
-                    sourceLabel = state.preview.sourceLabel,
-                    loading = state.preview.loading,
-                    onFilenameChange = viewModel::updatePreviewInput,
-                    onPickFile = { pickCbzLauncher.launch(arrayOf("application/octet-stream", "application/x-cbz", "application/zip", "*/*")) },
-                    onResetPreview = viewModel::resetPreview,
+            if (reorderMode) {
+                ReorderableRulesList(
+                    rules = rules,
+                    onMove = { from, to -> viewModel.move(from, to) },
+                    modifier = Modifier.padding(inner).fillMaxSize(),
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                if (reorderMode) {
-                    ReorderableRulesList(
-                        rules = rules,
-                        onMove = { from, to -> viewModel.move(from, to) },
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 96.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(rules, key = { it.id }) { rule ->
-                            val idx = rules.indexOf(rule)
-                            RuleCard(
-                                rule = rule,
-                                isFirst = idx == 0,
-                                isLast = idx == rules.size - 1,
-                                reorderMode = false,
-                                onToggle = { viewModel.toggleEnabled(rule.id) },
-                                onEdit = { editingRule = rule },
-                                onDelete = { viewModel.remove(rule.id) },
-                                onMoveUp = { viewModel.moveUp(rule.id) },
-                                onMoveDown = { viewModel.moveDown(rule.id) },
-                            )
-                        }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.padding(inner).fillMaxSize(),
+                    // Top padding gives the first card breathing room; the
+                    // bottom padding clears the FAB AND keeps the last card
+                    // from butting up against the bottom navigation bar.
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(rules, key = { it.id }) { rule ->
+                        val idx = rules.indexOf(rule)
+                        RuleCard(
+                            rule = rule,
+                            isFirst = idx == 0,
+                            isLast = idx == rules.size - 1,
+                            reorderMode = false,
+                            onToggle = { viewModel.toggleEnabled(rule.id) },
+                            onEdit = { editingRule = rule },
+                            onDelete = { viewModel.remove(rule.id) },
+                            onMoveUp = { viewModel.moveUp(rule.id) },
+                            onMoveDown = { viewModel.moveDown(rule.id) },
+                            modifier = Modifier.animateItem(),
+                        )
                     }
                 }
             }
         }
+    }
+
+    if (showTrySheet) {
+        TryPipelineSheet(
+            filename = state.preview.input,
+            final = state.previewedFinal,
+            vars = state.previewedVariables,
+            sourceLabel = state.preview.sourceLabel,
+            loading = state.preview.loading,
+            onDismiss = { showTrySheet = false },
+            onFilenameChange = viewModel::updatePreviewInput,
+            onPickFile = {
+                pickCbzLauncher.launch(
+                    arrayOf("application/octet-stream", "application/x-cbz", "application/zip", "*/*"),
+                )
+            },
+            onResetPreview = viewModel::resetPreview,
+        )
     }
 
     if (showAdd) {
@@ -316,136 +331,152 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
  * gets the visual weight.
  */
 /**
- * Slim collapsible preview bar.
+ * Try-pipeline sheet — opens from the TopAppBar's play icon.
  *
- *   - collapsed: a single line "Preview: input.cbz → final.cbz" so it doesn't
- *     dominate the screen when the user is scanning rules.
- *   - expanded: editable input field, the resolved final filename, the
- *     variables the rules can reference, and a "Test with a real .cbz"
- *     button that opens SAF and runs the pipeline against the picked file's
- *     real ComicInfo metadata so users see a true dry-run instead of fake
- *     placeholder values.
- *
- * Default is collapsed so the rules list — the actual product surface —
- * gets the visual weight.
+ * Replaces the previous always-visible preview bar at the top of the rules
+ * list. The bar was always-visible by default but the dry-run button was
+ * buried inside the expand interaction, so users never found it. Splitting
+ * 'glance at the result' from 'I want to test rules right now' into a
+ * dedicated sheet:
+ *   - frees the rules list from competing visual weight
+ *   - puts 'Pick a real .cbz' as a primary button on the surface that
+ *     opens specifically to test things
+ *   - keeps editable sample input + variable chips for users tweaking a
+ *     specific filename without touching disk
  */
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun PreviewBar(
+private fun TryPipelineSheet(
     filename: String,
     final: String,
     vars: Map<String, String>,
     sourceLabel: String?,
     loading: Boolean,
+    onDismiss: () -> Unit,
     onFilenameChange: (String) -> Unit,
     onPickFile: () -> Unit,
     onResetPreview: () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+    )
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
     ) {
-        Column(Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+        ) {
+            Text(
+                stringResource(R.string.pipeline_try_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.pipeline_try_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            // Primary action: pick a real .cbz. Lifted to the top of the
+            // sheet so it's the first thing the user reaches for.
+            androidx.compose.material3.Button(
+                onClick = onPickFile,
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth(),
             ) {
+                Icon(Icons.Outlined.FileOpen, null)
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    stringResource(R.string.pipeline_preview_collapsed_label),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = "$filename → ${final.ifEmpty { "?" }}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Icon(
-                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                    contentDescription = stringResource(
-                        if (expanded) R.string.pipeline_preview_collapse_cd
-                        else R.string.pipeline_preview_expand_cd,
-                    ),
+                    if (loading) stringResource(R.string.pipeline_preview_loading)
+                    else stringResource(R.string.pipeline_preview_pick_file),
                 )
             }
-            AnimatedVisibility(visible = expanded) {
-                Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
-                    OutlinedTextField(
-                        value = filename,
-                        onValueChange = onFilenameChange,
-                        label = { Text(stringResource(R.string.pipeline_input_filename)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        enabled = !loading,
+            if (sourceLabel != null && !loading) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.pipeline_preview_source, sourceLabel),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("→ ", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            final.ifEmpty { stringResource(R.string.pipeline_empty_preview) },
-                            fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                    androidx.compose.material3.TextButton(onClick = onResetPreview) {
+                        Text(stringResource(R.string.pipeline_preview_reset))
                     }
-                    if (vars.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            vars.entries.take(5).forEach { (k, v) ->
-                                AssistChip(
-                                    onClick = {},
-                                    label = { Text("%$k%=${v.take(16)}") },
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        androidx.compose.material3.OutlinedButton(
-                            onClick = onPickFile,
-                            modifier = Modifier.weight(1f),
-                            enabled = !loading,
-                        ) {
-                            Icon(Icons.Outlined.FileOpen, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                if (loading) stringResource(R.string.pipeline_preview_loading)
-                                else stringResource(R.string.pipeline_preview_pick_file),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        if (sourceLabel != null && !loading) {
-                            androidx.compose.material3.TextButton(onClick = onResetPreview) {
-                                Text(stringResource(R.string.pipeline_preview_reset))
-                            }
-                        }
-                    }
-                    if (sourceLabel != null && !loading) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            stringResource(R.string.pipeline_preview_source, sourceLabel),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(20.dp))
+
+            // Manual sample for users who want to type a hypothetical
+            // filename without touching disk. Edits here detach from any
+            // picked file (see ViewModel.updatePreviewInput).
+            Text(
+                stringResource(R.string.pipeline_try_sample_header),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = filename,
+                onValueChange = onFilenameChange,
+                label = { Text(stringResource(R.string.pipeline_input_filename)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !loading,
+            )
+
+            Spacer(Modifier.height(16.dp))
+            Text(
+                stringResource(R.string.pipeline_try_result_header),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Spacer(Modifier.height(8.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+            ) {
+                Text(
+                    text = final.ifEmpty { stringResource(R.string.pipeline_empty_preview) },
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            if (vars.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    stringResource(R.string.pipeline_try_vars_header),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    vars.entries.take(8).forEach { (k, v) ->
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("%$k% = ${v.take(20)}") },
                         )
                     }
                 }
             }
+            Spacer(Modifier.height(20.dp))
         }
     }
 }
@@ -460,6 +491,7 @@ private fun PreviewBar(
 private fun ReorderableRulesList(
     rules: List<Rule>,
     onMove: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     val reorder = rememberReorderableLazyListState(listState) { from, to ->
@@ -467,9 +499,9 @@ private fun ReorderableRulesList(
     }
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         items(rules, key = { it.id }) { rule ->
             ReorderableItem(reorder, key = rule.id) { _ ->

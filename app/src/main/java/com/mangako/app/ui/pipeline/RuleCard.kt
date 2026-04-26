@@ -79,8 +79,12 @@ fun RuleCard(
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        // surfaceContainerHigh sits one tonal step above the screen background
+        // (and the bottom navigation bar), so the cards have a clear edge
+        // against the bar — the previous surfaceContainer was the same tone
+        // as the nav bar and the two visually merged.
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
             modifier = Modifier

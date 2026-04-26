@@ -110,11 +110,14 @@
     <string name="editor_conditional_branch_empty">No nested rules yet</string>
     <string name="editor_conditional_add_to_branch">Add a rule</string>
 
-    <!-- Live preview bar -->
-    <string name="pipeline_preview_collapsed_label">Preview</string>
-    <string name="pipeline_preview_expand_cd">Expand preview</string>
-    <string name="pipeline_preview_collapse_cd">Collapse preview</string>
-    <string name="pipeline_preview_pick_file">Test with a real .cbz</string>
+    <!-- Try-pipeline sheet (dry run) -->
+    <string name="pipeline_try_cd">Test pipeline</string>
+    <string name="pipeline_try_title">Test the pipeline</string>
+    <string name="pipeline_try_subtitle">Pick a real .cbz to see exactly how it would be renamed, or type a sample filename below.</string>
+    <string name="pipeline_try_sample_header">Sample filename</string>
+    <string name="pipeline_try_result_header">Result</string>
+    <string name="pipeline_try_vars_header">Available variables</string>
+    <string name="pipeline_preview_pick_file">Pick a real .cbz</string>
     <string name="pipeline_preview_loading">Reading file…</string>
     <string name="pipeline_preview_reset">Use sample</string>
     <string name="pipeline_preview_source">Loaded from %1$s</string>

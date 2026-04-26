@@ -12,6 +12,18 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"
         tools:ignore="ScopedStorage" />
+    <!--
+        OPTIONAL: 'All files access'. Without it, we fall back to SAF +
+        WorkManager content-uri triggers + scan-on-resume + 15-min periodic.
+        With it, we can register inotify-backed FileObservers on the watched
+        directories' real filesystem paths and notice new .cbz files within
+        a second of the writer closing them — which is what every other
+        cloud-sync app on Android (Nextcloud, Syncthing, etc.) actually
+        does. Users grant it on demand from Settings → Real-time watching;
+        the app behaves correctly when it's denied or revoked.
+    -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <application
         android:name=".MangakoApp"

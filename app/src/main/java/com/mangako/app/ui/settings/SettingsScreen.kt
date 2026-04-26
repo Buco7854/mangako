@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -235,8 +236,97 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
+            Section(stringResource(R.string.settings_section_realtime)) {
+                RealtimeWatchingControl()
+            }
         }
     }
+}
+
+/**
+ * Surfaces the optional `MANAGE_EXTERNAL_STORAGE` ("All files access")
+ * permission that lets the app run kernel-level FileObservers on the
+ * watched folders' real filesystem paths — same trick Nextcloud uses for
+ * auto-upload. When granted the app notices new .cbz files within a
+ * second; without it we fall back to SAF + WorkManager content-uri
+ * triggers + scan-on-resume + 15-min periodic.
+ *
+ * The permission isn't a runtime permission — Android sends the user to
+ * a system Settings page and we observe the ON_RESUME after that page
+ * closes to refresh our state.
+ */
+@Composable
+private fun RealtimeWatchingControl() {
+    val ctx = LocalContext.current
+    val granted = rememberAllFilesAccessState()
+    Text(
+        stringResource(R.string.settings_realtime_intro),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(12.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        val statusText = if (granted) {
+            stringResource(R.string.settings_realtime_status_on)
+        } else {
+            stringResource(R.string.settings_realtime_status_off)
+        }
+        Text(
+            statusText,
+            style = MaterialTheme.typography.titleSmall,
+            color = if (granted) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedButton(onClick = { openAllFilesAccessSettings(ctx) }) {
+            Text(
+                stringResource(
+                    if (granted) R.string.settings_realtime_action_manage
+                    else R.string.settings_realtime_action_grant,
+                ),
+            )
+        }
+    }
+}
+
+/**
+ * Re-reads `Environment.isExternalStorageManager()` every time the screen
+ * resumes — the user comes back here from the system Settings page where
+ * they (in)granted the permission, and the regular Compose state hasn't
+ * changed. Lifecycle observer is the cleanest hook for that.
+ */
+@Composable
+private fun rememberAllFilesAccessState(): Boolean {
+    var granted by remember { mutableStateOf(com.mangako.app.work.observer.canUseFileObserver()) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                granted = com.mangako.app.work.observer.canUseFileObserver()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    return granted
+}
+
+private fun openAllFilesAccessSettings(ctx: android.content.Context) {
+    // ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION lands on the per-app
+    // toggle page; ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION is the broad
+    // list. Try app-specific first; if the OEM has stripped that intent,
+    // fall back to the list page so the user still has a way through.
+    val appSpecific = android.content.Intent(
+        android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+        android.net.Uri.parse("package:${ctx.packageName}"),
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    val fallback = android.content.Intent(
+        android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION,
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    runCatching { ctx.startActivity(appSpecific) }
+        .onFailure { runCatching { ctx.startActivity(fallback) } }
 }
 
 /**

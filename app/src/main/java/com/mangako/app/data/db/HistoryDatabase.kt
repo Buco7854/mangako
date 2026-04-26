@@ -56,13 +56,21 @@ data class PendingEntry(
      */
     val finalName: String? = null,
     /**
-     * User-supplied filename override. When set, the pipeline's filename
-     * mutations are bypassed and this exact string (with a `.cbz` suffix
-     * forced) is what gets uploaded. Lets the user fix a bad detection
-     * by hand before tapping Process. NULL means "let the pipeline rename
-     * the file" (the default).
+     * User-supplied filename to feed into the pipeline. When set, this
+     * string (rather than the detected filename) is what the rename
+     * rules see. Lets the user fix a bad detection by hand before
+     * tapping Process. NULL means "use the detected name" (the default).
      */
     val nameOverride: String? = null,
+    /**
+     * JSON-serialized map of ComicInfo variable overrides keyed by
+     * variable name (e.g. "series", "title", "writer"). When set, the
+     * worker merges these on top of whatever ExtractXmlMetadata pulled
+     * from the archive, so a typo or missing tag in ComicInfo can be
+     * fixed once on the Inbox card without re-encoding the file.
+     * NULL means "no overrides".
+     */
+    val metadataOverridesJson: String? = null,
 )
 
 /** Row of a `GROUP BY status` query — used for the Inbox filter chip counts. */
@@ -121,6 +129,9 @@ interface PendingDao {
     @Query("UPDATE pending SET nameOverride = :override WHERE id = :id")
     suspend fun setNameOverride(id: String, override: String?)
 
+    @Query("UPDATE pending SET metadataOverridesJson = :json WHERE id = :id")
+    suspend fun setMetadataOverridesJson(id: String, json: String?)
+
     @Query("DELETE FROM pending WHERE id = :id")
     suspend fun delete(id: String)
 
@@ -138,7 +149,7 @@ class Converters {
         HistoryJson.encodeToString(trail)
 }
 
-@Database(entities = [HistoryEntry::class, PendingEntry::class], version = 3, exportSchema = false)
+@Database(entities = [HistoryEntry::class, PendingEntry::class], version = 4, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class HistoryDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao

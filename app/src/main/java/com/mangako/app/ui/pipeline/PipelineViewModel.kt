@@ -13,6 +13,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.material.icons.outlined.FormatQuote
+import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.documentfile.provider.DocumentFile
@@ -226,12 +227,13 @@ class PipelineViewModel @Inject constructor(
             RuleKind.ExtractRegex -> Rule.ExtractRegex(
                 id = id, source = "summary", target = "language", pattern = "",
             )
+            RuleKind.SetVariable -> Rule.SetVariable(id = id, target = "title", value = "%series%")
             RuleKind.Regex -> Rule.RegexReplace(id = id, pattern = "", replacement = "")
             RuleKind.Group -> Rule.Group(id = id, label = "Group", rules = emptyList())
             RuleKind.WriteComicInfo -> Rule.WriteComicInfo(
                 id = id,
                 label = "Write to ComicInfo.xml",
-                fields = mapOf("Title" to "%__filename_stem__%"),
+                fields = mapOf("Title" to "%title%"),
             )
             RuleKind.Append -> Rule.StringAppend(id = id, text = "")
             RuleKind.Prepend -> Rule.StringPrepend(id = id, text = "")
@@ -252,6 +254,7 @@ enum class RuleKind(
 ) {
     ExtractXml(R.string.rule_kind_extract_xml, R.string.rule_kind_extract_xml_blurb, Icons.AutoMirrored.Outlined.Article),
     ExtractRegex(R.string.rule_kind_extract_regex, R.string.rule_kind_extract_regex_blurb, Icons.Outlined.ContentPasteSearch),
+    SetVariable(R.string.rule_kind_setvariable, R.string.rule_kind_setvariable_blurb, Icons.Outlined.DriveFileRenameOutline),
     Regex(R.string.rule_kind_regex, R.string.rule_kind_regex_blurb, Icons.Outlined.FindReplace),
     Append(R.string.rule_kind_append, R.string.rule_kind_append_blurb, Icons.Outlined.FormatQuote),
     Prepend(R.string.rule_kind_prepend, R.string.rule_kind_prepend_blurb, Icons.Outlined.FormatQuote),
@@ -266,6 +269,7 @@ enum class RuleKind(
 fun Rule.icon(): ImageVector = when (this) {
     is Rule.ExtractXmlMetadata -> Icons.AutoMirrored.Outlined.Article
     is Rule.ExtractRegex -> Icons.Outlined.ContentPasteSearch
+    is Rule.SetVariable -> Icons.Outlined.DriveFileRenameOutline
     is Rule.RegexReplace -> Icons.Outlined.FindReplace
     is Rule.Group -> Icons.Outlined.Folder
     is Rule.WriteComicInfo -> Icons.Outlined.Edit

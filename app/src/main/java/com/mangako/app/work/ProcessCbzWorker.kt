@@ -58,12 +58,15 @@ class ProcessCbzWorker @AssistedInject constructor(
         val pendingId = inputData.getString(KEY_PENDING_ID)
         val settings = settingsRepo.flow.first()
         val config = pipelineRepo.flow.first()
-        // The user may have set a custom filename from the Inbox card
-        // ("Edit name") before tapping Process. We always look up the
-        // pending row here rather than threading the override through
-        // input Data, so an override applied after the work was already
-        // enqueued (e.g. via approveAll) is still picked up.
-        val nameOverride = pendingId?.let { pendingRepo.find(it)?.nameOverride }
+        // The user may have set a custom filename and / or overridden
+        // ComicInfo variables from the Inbox card ("Edit detection")
+        // before tapping Process. We always look up the pending row
+        // here rather than threading the overrides through input Data,
+        // so edits applied after the work was already enqueued (e.g.
+        // via approveAll) are still picked up.
+        val pendingRow = pendingId?.let { pendingRepo.find(it) }
+        val nameOverride = pendingRow?.nameOverride
+        val metadataOverrides = pendingRow?.metadataOverrides.orEmpty()
 
         val docFile = DocumentFile.fromSingleUri(applicationContext, android.net.Uri.parse(uriStr))
             ?: return@withContext Result.failure() // malformed URI — never going to work
@@ -88,8 +91,12 @@ class ProcessCbzWorker @AssistedInject constructor(
         val startedAt = System.currentTimeMillis()
 
         try {
-            // 3. Metadata → pipeline variable context.
-            val metadata = cbzProcessor.extractMetadata(localCopy)
+            // 3. Metadata → pipeline variable context. User overrides
+            //    win on key collisions: the Inbox "Edit detection"
+            //    sheet exists precisely so the user can correct what
+            //    ComicInfo got wrong, so anything they typed should
+            //    take priority over the file's own values.
+            val metadata = cbzProcessor.extractMetadata(localCopy) + metadataOverrides
 
             // 4. Run pipeline. If the user manually corrected the source
             //    filename via "Edit name" on the Inbox card, the override

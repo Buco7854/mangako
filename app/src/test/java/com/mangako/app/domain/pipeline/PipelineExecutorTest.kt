@@ -209,44 +209,26 @@ class PipelineExecutorTest {
         assertEquals("My Series", out.comicInfoUpdates["Series"])
     }
 
-    @Test fun `WriteComicInfo inside a conditional picks the right title branch`() {
-        // Mirrors the default template's manhwa-aware ComicInfo sync.
+    @Test fun `SetVariable copies one variable into another with %tokens%`() {
+        // Mirrors the default template's "Fix generic titles" branch:
+        // when %title% is generic (e.g. 'Chapter 39'), promote %series%
+        // into %title% so a downstream WriteComicInfo can write
+        // Title=%title% and pick up the human title.
         val cfg = PipelineConfig(
             rules = listOf(
-                Rule.ConditionalFormat(
-                    id = "c",
-                    condition = Condition("genre", Condition.Op.CONTAINS, "Manhwa"),
-                    thenRules = listOf(
-                        Rule.WriteComicInfo(
-                            id = "wci-m",
-                            fields = mapOf("Title" to "%series% Ch %number%"),
-                        ),
-                    ),
-                    elseRules = listOf(
-                        Rule.WriteComicInfo(
-                            id = "wci",
-                            fields = mapOf("Title" to "%series%"),
-                        ),
-                    ),
-                ),
+                Rule.SetVariable(id = "s", target = "title", value = "%series%"),
+                Rule.WriteComicInfo(id = "w", fields = mapOf("Title" to "%title%")),
             ),
         )
-        val manhwa = executor.run(
+        val out = executor.run(
             cfg,
             PipelineExecutor.Input(
-                "x.cbz",
-                metadata = mapOf("series" to "My Series", "number" to "39", "genre" to "Manhwa; Action"),
+                "Chapter 39.cbz",
+                metadata = mapOf("title" to "Chapter 39", "series" to "My Series"),
             ),
         )
-        val manga = executor.run(
-            cfg,
-            PipelineExecutor.Input(
-                "x.cbz",
-                metadata = mapOf("series" to "My Series", "number" to "1", "genre" to "Action"),
-            ),
-        )
-        assertEquals("My Series Ch 39", manhwa.comicInfoUpdates["Title"])
-        assertEquals("My Series", manga.comicInfoUpdates["Title"])
+        assertEquals("My Series", out.variables["title"])
+        assertEquals("My Series", out.comicInfoUpdates["Title"])
     }
 
     @Test fun `clean whitespace collapses repeated spaces and trims`() {

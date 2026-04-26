@@ -102,6 +102,7 @@ fun RuleEditorSheet(
             when (val r = draft) {
                 is Rule.ExtractXmlMetadata -> MappingEditor(r) { draft = it }
                 is Rule.ExtractRegex -> ExtractRegexEditor(r) { draft = it }
+                is Rule.SetVariable -> SetVariableEditor(r) { draft = it }
                 is Rule.RegexReplace -> RegexEditor(r) { draft = it }
                 is Rule.Group -> GroupEditor(r) { draft = it }
                 is Rule.WriteComicInfo -> WriteComicInfoEditor(r) { draft = it }
@@ -289,6 +290,30 @@ private fun WriteComicInfoEditor(rule: Rule.WriteComicInfo, onChange: (Rule.Writ
 
 private fun List<Pair<String, String>>.toLinkedMap(): Map<String, String> =
     associateTo(LinkedHashMap()) { it }
+
+@Composable
+private fun SetVariableEditor(rule: Rule.SetVariable, onChange: (Rule.SetVariable) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            stringResource(R.string.editor_setvariable_help),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = rule.target,
+            onValueChange = { onChange(rule.copy(target = it)) },
+            label = { Text(stringResource(R.string.editor_setvariable_target)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = rule.value,
+            onValueChange = { onChange(rule.copy(value = it)) },
+            label = { Text(stringResource(R.string.editor_setvariable_value)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
 
 @Composable
 private fun RegexEditor(rule: Rule.RegexReplace, onChange: (Rule.RegexReplace) -> Unit) {
@@ -582,17 +607,16 @@ private fun newRuleOfKind(kind: RuleKind): Rule {
         RuleKind.ExtractRegex -> Rule.ExtractRegex(
             id = id, source = "summary", target = "language", pattern = "",
         )
+        RuleKind.SetVariable -> Rule.SetVariable(id = id, target = "title", value = "%series%")
         RuleKind.Regex -> Rule.RegexReplace(id = id, pattern = "", replacement = "")
         RuleKind.Group -> Rule.Group(id = id, label = "Group", rules = emptyList())
         RuleKind.WriteComicInfo -> Rule.WriteComicInfo(
             id = id,
             label = "Write to ComicInfo.xml",
-            // Default to the ComicInfo <Series> so LANraragi shows a
-            // clean human title ("My Series") rather than the
-            // bracket-decorated archive filename. Users can swap to
-            // %series% Ch %number% for chapter-based manhwa, or any
-            // other variable, from the editor.
-            fields = mapOf("Title" to "%series%"),
+            // Default to %title% so LANraragi shows the clean title that
+            // upstream rules already corrected (via SetVariable etc.),
+            // not the bracket-decorated archive filename.
+            fields = mapOf("Title" to "%title%"),
         )
         RuleKind.Append -> Rule.StringAppend(id = id, text = "")
         RuleKind.Prepend -> Rule.StringPrepend(id = id, text = "")

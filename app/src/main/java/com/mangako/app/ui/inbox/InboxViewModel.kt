@@ -184,6 +184,14 @@ class InboxViewModel @Inject constructor(
         pendingRepo.setNameOverride(file.id, name)
     }
 
+    /** Persist a full edit-detection payload — both the filename
+     *  override and the ComicInfo variable overrides — in one shot. The
+     *  worker reads both back when the user later taps Process. */
+    fun saveEdit(file: PendingFile, name: String?, metadata: Map<String, String>) = viewModelScope.launch {
+        pendingRepo.setNameOverride(file.id, name)
+        pendingRepo.setMetadataOverrides(file.id, metadata)
+    }
+
     fun approveAll() = viewModelScope.launch {
         state.value.items.forEach { approve(it.file) }
     }

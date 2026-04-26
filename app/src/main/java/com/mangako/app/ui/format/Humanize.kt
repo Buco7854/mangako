@@ -14,6 +14,7 @@ import com.mangako.app.domain.rule.Rule
 fun Rule.humanTitle(): String = label?.takeIf { it.isNotBlank() } ?: when (this) {
     is Rule.ExtractXmlMetadata -> "Read details from ComicInfo.xml"
     is Rule.ExtractRegex -> "Pull a value out of %$source%"
+    is Rule.SetVariable -> "Set %$target%"
     is Rule.RegexReplace -> "Find and replace text"
     is Rule.Group -> "Group"
     is Rule.WriteComicInfo -> "Write to ComicInfo.xml"
@@ -34,6 +35,9 @@ fun Rule.humanSubtitle(): String = when (this) {
         val pat = pattern.ifBlank { "(no pattern yet)" }
         "Look in %$source% for /$pat/ and save the match into %$target%."
     }
+    is Rule.SetVariable ->
+        if (target.isBlank()) "Pick which variable to set."
+        else "Set %$target% to \"${value.ifBlank { "(empty)" }}\"."
     is Rule.RegexReplace -> {
         val pat = pattern.ifBlank { "(no pattern yet)" }
         val rep = replacement.ifBlank { "(empty)" }
@@ -100,6 +104,7 @@ data class HumanizedStep(
 private fun String.humanizeRuleType(): String = when (this) {
     "ExtractXmlMetadata" -> "Read ComicInfo.xml"
     "ExtractRegex" -> "Extract value"
+    "SetVariable" -> "Set variable"
     "RegexReplace" -> "Find and replace"
     "Group" -> "Group"
     "WriteComicInfo" -> "Write to ComicInfo.xml"

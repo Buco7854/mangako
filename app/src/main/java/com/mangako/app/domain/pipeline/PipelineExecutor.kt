@@ -136,6 +136,22 @@ class PipelineExecutor(
                         }
                     }
 
+                    is Rule.SetVariable -> {
+                        if (rule.target.isBlank()) {
+                            StepResult.skipped(rule, input, "No target variable set")
+                        } else {
+                            val resolved = interpolate(rule.value, vars, escapeReplacement = false)
+                            StepResult(
+                                rule = rule,
+                                before = input,
+                                after = input,
+                                variableUpdates = mapOf(rule.target to resolved),
+                                note = "%${rule.target}% = \"${resolved.take(32)}\"",
+                                durationMs = msSince(started),
+                            )
+                        }
+                    }
+
                     is Rule.RegexReplace -> {
                         val opts = if (rule.ignoreCase) setOf(RegexOption.IGNORE_CASE) else emptySet()
                         val regex = Regex(rule.pattern, opts)

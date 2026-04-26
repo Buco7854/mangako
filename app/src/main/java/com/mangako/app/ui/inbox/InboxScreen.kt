@@ -1,6 +1,8 @@
 package com.mangako.app.ui.inbox
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +10,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,7 +31,6 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,9 +41,11 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -150,7 +156,9 @@ fun InboxScreen(
                         onReject = { viewModel.reject(item.file) },
                         onReprocess = { viewModel.reprocess(item.file) },
                         onForget = { viewModel.forget(item.file) },
-                        onRename = { newName -> viewModel.setNameOverride(item.file, newName) },
+                        onSaveEdit = { name, metadata ->
+                            viewModel.saveEdit(item.file, name, metadata)
+                        },
                     )
                 }
             }
@@ -327,25 +335,26 @@ private fun InboxCard(
     onReject: () -> Unit,
     onReprocess: () -> Unit,
     onForget: () -> Unit,
-    onRename: (String?) -> Unit,
+    onSaveEdit: (name: String?, metadata: Map<String, String>) -> Unit,
 ) {
     when (filter) {
-        InboxViewModel.Filter.PENDING -> PendingCard(item, onApprove, onReject, onRename)
+        InboxViewModel.Filter.PENDING -> PendingCard(item, onApprove, onReject, onSaveEdit)
         InboxViewModel.Filter.PROCESSED -> ProcessedCard(item, onForget)
         InboxViewModel.Filter.IGNORED -> IgnoredCard(item, onReprocess, onForget)
     }
 }
 
 /** The full-detail card — rename preview, size, timestamp, decide buttons.
- *  Tapping the pencil opens a single-field dialog so the user can fix a
- *  bad detection before tapping Process; the edited name then becomes the
- *  pipeline's input filename. */
+ *  Tapping the pencil opens an edit sheet so the user can fix a bad
+ *  detection before tapping Process; the edited filename becomes the
+ *  pipeline's input filename, and any ComicInfo overrides feed into
+ *  the pipeline's variable map. */
 @Composable
 private fun PendingCard(
     item: InboxViewModel.InboxItem,
     onApprove: () -> Unit,
     onReject: () -> Unit,
-    onRename: (String?) -> Unit,
+    onSaveEdit: (name: String?, metadata: Map<String, String>) -> Unit,
 ) {
     val file = item.file
     var editing by remember(file.id) { mutableStateOf(false) }
@@ -429,72 +438,164 @@ private fun PendingCard(
     }
 
     if (editing) {
-        EditNameDialog(
-            initial = displayedName,
-            hadOverride = !file.nameOverride.isNullOrBlank(),
+        EditDetectionSheet(
+            initialName = displayedName,
+            initialMetadata = file.metadataOverrides,
+            hasAnyOverride = !file.nameOverride.isNullOrBlank() || file.metadataOverrides.isNotEmpty(),
             onDismiss = { editing = false },
-            onSave = { newName ->
+            onSave = { newName, metadata ->
                 editing = false
-                onRename(newName)
+                // Treat blank or unchanged-from-detected-name as "no
+                // filename override" so the row reverts to its
+                // detected name without a stale override flag.
+                val nameOverride = newName.takeIf { it.isNotBlank() && it != file.name }
+                onSaveEdit(nameOverride, metadata)
             },
             onReset = {
                 editing = false
-                onRename(null)
+                onSaveEdit(null, emptyMap())
             },
         )
     }
 }
 
+/**
+ * Bottom sheet that lets the user override the detected filename and any
+ * ComicInfo variables before processing. ComicInfo overrides win over
+ * what's actually in the .cbz at pipeline time, so a typo or a missing
+ * &lt;Series&gt; tag can be fixed once on the card without re-encoding
+ * the file.
+ *
+ * Empty metadata fields mean "don't override" — they're filtered out
+ * before persisting so the saved override map only contains values the
+ * user actually typed.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EditNameDialog(
-    initial: String,
-    hadOverride: Boolean,
+private fun EditDetectionSheet(
+    initialName: String,
+    initialMetadata: Map<String, String>,
+    hasAnyOverride: Boolean,
     onDismiss: () -> Unit,
-    onSave: (String) -> Unit,
+    onSave: (name: String, metadata: Map<String, String>) -> Unit,
     onReset: () -> Unit,
 ) {
-    var text by remember { mutableStateOf(initial) }
-    AlertDialog(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var name by remember { mutableStateOf(initialName) }
+    // Each ComicInfo field gets its own piece of state, pre-filled with
+    // the user's existing override (if any) — we don't show what the
+    // file's actual ComicInfo currently holds because we haven't
+    // extracted it yet at detection time, and reading it on demand
+    // would block the UI on a zip parse.
+    val keys = listOf("title", "series", "writer", "language", "number", "genre")
+    val labels = mapOf(
+        "title" to stringResource(R.string.inbox_edit_metadata_title),
+        "series" to stringResource(R.string.inbox_edit_metadata_series),
+        "writer" to stringResource(R.string.inbox_edit_metadata_writer),
+        "language" to stringResource(R.string.inbox_edit_metadata_language),
+        "number" to stringResource(R.string.inbox_edit_metadata_number),
+        "genre" to stringResource(R.string.inbox_edit_metadata_genre),
+    )
+    val fieldValues = remember(initialMetadata) {
+        keys.associateWith { mutableStateOf(initialMetadata[it].orEmpty()) }
+    }
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.inbox_edit_name_title)) },
-        text = {
-            Column {
-                Text(
-                    stringResource(R.string.inbox_edit_name_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
+        sheetState = sheetState,
+        // Same insets handling as the other Mangako sheets so the title
+        // doesn't sit under the camera punch-hole.
+        contentWindowInsets = {
+            WindowInsets.systemBars.union(WindowInsets.displayCutout)
+        },
+    ) {
+        val scroll = rememberScrollState()
+        Column(
+            Modifier
+                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp)
+                .verticalScroll(scroll),
+        ) {
+            Text(
+                stringResource(R.string.inbox_edit_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.inbox_edit_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(Modifier.height(16.dp))
+            Text(
+                stringResource(R.string.inbox_edit_section_filename),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                label = { Text(stringResource(R.string.inbox_edit_filename_label)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(20.dp))
+            Text(
+                stringResource(R.string.inbox_edit_section_metadata),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.inbox_edit_metadata_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            keys.forEach { k ->
+                val state = fieldValues.getValue(k)
                 OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
+                    value = state.value,
+                    onValueChange = { state.value = it },
+                    label = { Text(labels.getValue(k)) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 )
             }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = text.isNotBlank() && text != initial,
-                onClick = { onSave(text.trim()) },
-            ) {
-                Text(stringResource(R.string.inbox_edit_name_save))
-            }
-        },
-        dismissButton = {
-            Row {
-                if (hadOverride) {
+
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (hasAnyOverride) {
                     TextButton(onClick = onReset) {
-                        Text(stringResource(R.string.inbox_edit_name_reset))
+                        Text(stringResource(R.string.inbox_edit_reset))
                     }
                 }
-                TextButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.inbox_edit_name_cancel))
+                Spacer(Modifier.weight(1f))
+                OutlinedButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.inbox_edit_cancel))
+                }
+                Button(
+                    enabled = name.isNotBlank(),
+                    onClick = {
+                        val metadata = keys
+                            .mapNotNull { k ->
+                                val v = fieldValues.getValue(k).value.trim()
+                                if (v.isEmpty()) null else k to v
+                            }
+                            .toMap()
+                        onSave(name.trim(), metadata)
+                    },
+                ) {
+                    Text(stringResource(R.string.inbox_edit_save))
                 }
             }
-        },
-    )
+        }
+    }
 }
+
 
 /**
  * Minimal view for already-processed files. The user wanted just the

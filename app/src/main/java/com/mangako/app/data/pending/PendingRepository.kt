@@ -5,9 +5,15 @@ import com.mangako.app.data.db.PendingEntry
 import com.mangako.app.data.db.StatusCount
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private val OverrideJson = Json { ignoreUnknownKeys = true; encodeDefaults = false }
+private val OverrideMapSerializer = MapSerializer(String.serializer(), String.serializer())
 
 @Suppress("unused") // surfaced via observeCounts; explicit re-export keeps the data class reachable.
 private typealias PendingStatusCount = StatusCount
@@ -26,9 +32,14 @@ data class PendingFile(
      *  for not-yet-processed rows. Lets the Inbox/Processed view show the
      *  truth without a fuzzy join against history-by-original-name. */
     val finalName: String? = null,
-    /** Optional user-set filename to use instead of the pipeline rename.
-     *  When non-null, ProcessCbzWorker uploads under exactly this name. */
+    /** Optional user-set filename fed into the pipeline as the starting
+     *  name. Lets a bad detection be corrected before Process is tapped. */
     val nameOverride: String? = null,
+    /** Optional user-set ComicInfo variable overrides. Merged on top of
+     *  whatever ExtractXmlMetadata reads from the archive, keyed by the
+     *  variable name (e.g. "series", "title", "writer"). Empty when no
+     *  overrides are set. */
+    val metadataOverrides: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -107,6 +118,19 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
         dao.setNameOverride(id, override?.takeIf { it.isNotBlank() })
 
     /**
+     * Persist user-set ComicInfo variable overrides for [id]. Empty
+     * map clears all overrides. Empty values inside the map are
+     * dropped before persisting — a blank override means "don't
+     * override" rather than "set to empty".
+     */
+    suspend fun setMetadataOverrides(id: String, overrides: Map<String, String>) {
+        val cleaned = overrides.filterValues { it.isNotBlank() }
+        val json = if (cleaned.isEmpty()) null
+        else OverrideJson.encodeToString(OverrideMapSerializer, cleaned)
+        dao.setMetadataOverridesJson(id, json)
+    }
+
+    /**
      * Resets a previously-processed or ignored row back to PENDING so the
      * user can run it through the pipeline again. The original file URI
      * is kept; if the underlying SAF document no longer resolves (file was
@@ -128,5 +152,8 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
         status = runCatching { PendingStatus.valueOf(status) }.getOrDefault(PendingStatus.PENDING),
         finalName = finalName,
         nameOverride = nameOverride,
+        metadataOverrides = metadataOverridesJson?.let {
+            runCatching { OverrideJson.decodeFromString(OverrideMapSerializer, it) }.getOrDefault(emptyMap())
+        } ?: emptyMap(),
     )
 }

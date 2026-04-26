@@ -48,8 +48,14 @@ object DefaultTemplate {
                 )
             )
 
-            // 3. Generic title fix: if <Title> looks like "Chapter", "Chapter 12", "Chap 5", "Ch.3" — replace it with %series%.
-            //    We rewrite the whole filename, since our input filename is typically <title>.cbz from Mihon.
+            // 3. Generic title fix: if <Title> looks like "Chapter",
+            //    "Chapter 12", "Chap 5", "Ch.3" — promote %series% into
+            //    %title% and rewrite the filename to %series%.cbz.
+            //    Mirrors fix_comicinfo_title in mihon.sh, which copies
+            //    Series into Title when the upstream Title is the
+            //    generic chapter label Mihon embeds. After this step
+            //    %title% is the human title, ready to be written into
+            //    ComicInfo by step 12 below.
             add(
                 Rule.ConditionalFormat(
                     id = id(),
@@ -61,6 +67,12 @@ object DefaultTemplate {
                         ignoreCase = true,
                     ),
                     thenRules = listOf(
+                        Rule.SetVariable(
+                            id = id(),
+                            label = "Set %title% to %series%",
+                            target = "title",
+                            value = "%series%",
+                        ),
                         Rule.RegexReplace(
                             id = id(),
                             label = "Replace filename with %series%",
@@ -232,41 +244,20 @@ object DefaultTemplate {
             //     LANraragi groups uploads by Mihon's per-manga <Series>
             //     rather than letting the user organise them themselves.
             //
-            //     The Title we write is the human one we just produced
-            //     in the filename via the earlier title-fix + manhwa
-            //     formatting steps — i.e. "%series%" for normal manga
-            //     and "%series% Ch %number%" for manhwa — rather than
-            //     the bracket-decorated archive filename. Users can edit
+            //     We just write %title% — by this point step 3 has
+            //     already promoted %series% into %title% when the
+            //     upstream title was generic, so this is the human
+            //     title (e.g. "My Series") rather than the
+            //     bracket-decorated archive filename. Users can edit
             //     this rule to write additional fields, or delete it
             //     entirely if they prefer ComicInfo untouched.
             add(
-                Rule.ConditionalFormat(
+                Rule.WriteComicInfo(
                     id = id(),
                     label = "Sync ComicInfo with title",
-                    condition = Condition(
-                        variable = "genre",
-                        op = Condition.Op.CONTAINS,
-                        value = "Manhwa",
-                    ),
-                    thenRules = listOf(
-                        Rule.WriteComicInfo(
-                            id = id(),
-                            label = "Title = series Ch number (manhwa)",
-                            fields = mapOf(
-                                "Title" to "%series% Ch %number%",
-                                "Series" to "",
-                            ),
-                        ),
-                    ),
-                    elseRules = listOf(
-                        Rule.WriteComicInfo(
-                            id = id(),
-                            label = "Title = series",
-                            fields = mapOf(
-                                "Title" to "%series%",
-                                "Series" to "",
-                            ),
-                        ),
+                    fields = mapOf(
+                        "Title" to "%title%",
+                        "Series" to "",
                     ),
                 ),
             )

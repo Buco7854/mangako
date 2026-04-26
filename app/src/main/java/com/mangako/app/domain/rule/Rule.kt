@@ -87,6 +87,34 @@ sealed class Rule {
         override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
     }
 
+    /**
+     * Sets a single variable to a (interpolated) template string. Lets a
+     * pipeline propagate a corrected value forward without reading from
+     * source data — e.g. `%title% = %series%` after an upstream "fix
+     * generic titles" step. The value template can reference any
+     * variable that's already in scope, including the reserved
+     * `%__filename__%` / `%__filename_stem__%`.
+     *
+     * Logically it's the simplest possible mutation: assign a value to
+     * a name. Modeled as its own rule type rather than a special-case
+     * regex extraction so the editor and audit log can describe it
+     * plainly ("Set %title% to %series%") instead of via empty-pattern
+     * tricks.
+     */
+    @Serializable
+    @SerialName("set_variable")
+    data class SetVariable(
+        override val id: String,
+        override val enabled: Boolean = true,
+        override val label: String? = null,
+        val target: String,
+        val value: String,
+    ) : Rule() {
+        override fun displayName() = label ?: "Set %$target%"
+        override fun describe() = "%$target% = ${value.truncate(32)}"
+        override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
+    }
+
     @Serializable
     @SerialName("regex_replace")
     data class RegexReplace(

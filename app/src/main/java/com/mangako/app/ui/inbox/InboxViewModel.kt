@@ -8,6 +8,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.mangako.app.data.history.HistoryRepository
 import com.mangako.app.data.pending.PendingFile
 import com.mangako.app.data.pending.PendingRepository
 import com.mangako.app.data.pending.PendingStatus
@@ -36,6 +37,7 @@ class InboxViewModel @Inject constructor(
     private val pendingRepo: PendingRepository,
     settingsRepo: SettingsRepository,
     pipelineRepo: PipelineRepository,
+    historyRepo: HistoryRepository,
 ) : ViewModel() {
 
     /**
@@ -73,6 +75,15 @@ class InboxViewModel @Inject constructor(
          * could still actually run against the file.
          */
         val previewedFinal: String,
+        /**
+         * The actually-uploaded filename for a Processed row. Sourced
+         * preferentially from the row's own [PendingFile.finalName] column
+         * (set at upload time), then from the matching history record if
+         * the column is null (legacy rows). Null only when neither source
+         * has the value — in that case the Processed card hides the arrow
+         * rather than guessing via a re-run preview.
+         */
+        val recordedFinal: String?,
     )
 
     data class UiState(
@@ -91,13 +102,31 @@ class InboxViewModel @Inject constructor(
         pendingRepo.observeCounts(),
         settingsRepo.flow,
         pipelineRepo.flow,
-    ) { items, statusCounts, settings, config ->
+        historyRepo.observe(),
+    ) { items, statusCounts, settings, config, history ->
+        // Index history by original filename so Processed cards can fall
+        // back to the most-recent recorded final name when the row's own
+        // finalName column is null (legacy rows from before that column
+        // existed). The History detail screen reads the same finalName off
+        // the trail, so this guarantees the Processed view and History
+        // never disagree.
+        val historyFinalByOriginal: Map<String, String> = history
+            .asReversed() // observe() returns newest-first; reverse so the newest wins the put.
+            .associate { it.originalName to it.finalName }
         UiState(
             filter = filter.value,
-            // The Processed card reads file.finalName for the actual upload
-            // result; previewedFinal stays for the Pending view's dry-run
-            // 'this is what Process will do' hint.
-            items = items.map { p -> InboxItem(file = p, previewedFinal = previewRename(config, p.name)) },
+            items = items.map { p ->
+                // Preview the pipeline against whichever input the worker
+                // will actually feed it: the user's override when set,
+                // otherwise the detected filename. Keeps the Pending
+                // card's "Renames to" hint truthful after an edit.
+                val pipelineInput = p.nameOverride?.takeIf { it.isNotBlank() } ?: p.name
+                InboxItem(
+                    file = p,
+                    previewedFinal = previewRename(config, pipelineInput),
+                    recordedFinal = p.finalName ?: historyFinalByOriginal[p.name],
+                )
+            },
             counts = Filter.values().associateWith { f ->
                 f.statuses.sumOf { statusCounts[it] ?: 0 }
             },
@@ -147,6 +176,12 @@ class InboxViewModel @Inject constructor(
     fun forget(file: PendingFile) = viewModelScope.launch {
         pendingRepo.delete(file.id)
         Notifications.cancelDetected(context, file.id)
+    }
+
+    /** Persist a user-chosen filename for a Pending row. Pass null/blank
+     *  to clear the override and let the pipeline rename the file. */
+    fun setNameOverride(file: PendingFile, name: String?) = viewModelScope.launch {
+        pendingRepo.setNameOverride(file.id, name)
     }
 
     fun approveAll() = viewModelScope.launch {

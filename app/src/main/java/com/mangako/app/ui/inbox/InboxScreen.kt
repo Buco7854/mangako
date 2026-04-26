@@ -22,9 +22,11 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -36,15 +38,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -144,6 +150,7 @@ fun InboxScreen(
                         onReject = { viewModel.reject(item.file) },
                         onReprocess = { viewModel.reprocess(item.file) },
                         onForget = { viewModel.forget(item.file) },
+                        onRename = { newName -> viewModel.setNameOverride(item.file, newName) },
                     )
                 }
             }
@@ -320,36 +327,77 @@ private fun InboxCard(
     onReject: () -> Unit,
     onReprocess: () -> Unit,
     onForget: () -> Unit,
+    onRename: (String?) -> Unit,
 ) {
     when (filter) {
-        InboxViewModel.Filter.PENDING -> PendingCard(item, onApprove, onReject)
+        InboxViewModel.Filter.PENDING -> PendingCard(item, onApprove, onReject, onRename)
         InboxViewModel.Filter.PROCESSED -> ProcessedCard(item, onForget)
         InboxViewModel.Filter.IGNORED -> IgnoredCard(item, onReprocess, onForget)
     }
 }
 
-/** The full-detail card — rename preview, size, timestamp, decide buttons. */
+/** The full-detail card — rename preview, size, timestamp, decide buttons.
+ *  Tapping the pencil opens a single-field dialog so the user can fix a
+ *  bad detection before tapping Process; the edited name then becomes the
+ *  pipeline's input filename. */
 @Composable
 private fun PendingCard(
     item: InboxViewModel.InboxItem,
     onApprove: () -> Unit,
     onReject: () -> Unit,
+    onRename: (String?) -> Unit,
 ) {
     val file = item.file
+    var editing by remember(file.id) { mutableStateOf(false) }
+    // The displayed source name is the user's override when set,
+    // otherwise the detected filename. Both flow through the same
+    // pipeline preview, so the "Renames to" line always reflects what
+    // Process will actually upload.
+    val displayedName = file.nameOverride?.takeIf { it.isNotBlank() } ?: file.name
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(
-                file.name,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                fontFamily = FontFamily.Monospace,
-            )
-            if (item.previewedFinal != file.name) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    if (file.nameOverride?.isNotBlank() == true) {
+                        Text(
+                            stringResource(R.string.inbox_edited_label),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.height(2.dp))
+                    }
+                    Text(
+                        displayedName,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    if (file.nameOverride?.isNotBlank() == true && file.nameOverride != file.name) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            stringResource(R.string.inbox_original_was, file.name),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+                IconButton(onClick = { editing = true }) {
+                    Icon(
+                        Icons.Outlined.Edit,
+                        contentDescription = stringResource(R.string.inbox_edit_name_cd),
+                    )
+                }
+            }
+            if (item.previewedFinal != displayedName) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     stringResource(R.string.inbox_rename_to),
@@ -379,6 +427,73 @@ private fun PendingCard(
             }
         }
     }
+
+    if (editing) {
+        EditNameDialog(
+            initial = displayedName,
+            hadOverride = !file.nameOverride.isNullOrBlank(),
+            onDismiss = { editing = false },
+            onSave = { newName ->
+                editing = false
+                onRename(newName)
+            },
+            onReset = {
+                editing = false
+                onRename(null)
+            },
+        )
+    }
+}
+
+@Composable
+private fun EditNameDialog(
+    initial: String,
+    hadOverride: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+    onReset: () -> Unit,
+) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.inbox_edit_name_title)) },
+        text = {
+            Column {
+                Text(
+                    stringResource(R.string.inbox_edit_name_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = text.isNotBlank() && text != initial,
+                onClick = { onSave(text.trim()) },
+            ) {
+                Text(stringResource(R.string.inbox_edit_name_save))
+            }
+        },
+        dismissButton = {
+            Row {
+                if (hadOverride) {
+                    TextButton(onClick = onReset) {
+                        Text(stringResource(R.string.inbox_edit_name_reset))
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.inbox_edit_name_cancel))
+                }
+            }
+        },
+    )
 }
 
 /**
@@ -387,10 +502,13 @@ private fun PendingCard(
  * the source .cbz is typically deleted on success (deleteOnSuccess
  * defaults true), so 'Reprocess' would silently fail. Only Forget here.
  *
- * The 'after' filename comes from the actual upload audit trail
- * (item.recordedFinal) when available, so it reflects what really
- * landed on the server rather than re-running today's pipeline against
- * the original name.
+ * The 'after' filename comes from the row's own finalName column (set at
+ * upload time) and falls back to the matching history record when the
+ * column is null (legacy rows). Crucially we do NOT fall back to a
+ * re-run of today's pipeline against the original name — the user
+ * reported that mismatching the History detail, and a fresh pipeline
+ * run after rule edits would lie about what actually landed on the
+ * server.
  */
 @Composable
 private fun ProcessedCard(
@@ -398,12 +516,7 @@ private fun ProcessedCard(
     onForget: () -> Unit,
 ) {
     val file = item.file
-    // Prefer the actually-uploaded filename stored on the row at processing
-    // time. previewedFinal is a re-run of today's pipeline against the
-    // original name, which would mismatch History after rule edits — we
-    // only use it as a fallback for legacy rows from before the column
-    // existed (when the DB had no recorded final).
-    val finalName = file.finalName ?: item.previewedFinal
+    val finalName = item.recordedFinal
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
@@ -415,29 +528,34 @@ private fun ProcessedCard(
             Column(Modifier.weight(1f)) {
                 Text(
                     file.name,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = if (finalName != null) MaterialTheme.typography.bodySmall
+                    else MaterialTheme.typography.titleSmall,
+                    fontWeight = if (finalName != null) FontWeight.Normal else FontWeight.SemiBold,
                     fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    color = if (finalName != null) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.AutoMirrored.Outlined.ArrowForward,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        finalName,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                if (finalName != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.ArrowForward,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            finalName,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
             IconButton(onClick = onForget) {

@@ -587,7 +587,10 @@ private fun newRuleOfKind(kind: RuleKind): Rule {
         RuleKind.WriteComicInfo -> Rule.WriteComicInfo(
             id = id,
             label = "Write to ComicInfo.xml",
-            fields = mapOf("Title" to "%__filename_stem__%"),
+            // Default to the bracket-stripped filename so LANraragi shows
+            // a clean "Series Ch 39" rather than the bracket-decorated
+            // archive filename.
+            fields = mapOf("Title" to "%__filename_title__%"),
         )
         RuleKind.Append -> Rule.StringAppend(id = id, text = "")
         RuleKind.Prepend -> Rule.StringPrepend(id = id, text = "")

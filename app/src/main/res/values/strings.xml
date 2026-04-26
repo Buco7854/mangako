@@ -155,6 +155,14 @@
     <string name="inbox_filter_processed">Processed</string>
     <string name="inbox_filter_ignored">Ignored</string>
     <string name="inbox_rename_to">Will be renamed to</string>
+    <string name="inbox_edit_name_cd">Edit detected filename</string>
+    <string name="inbox_edit_name_title">Edit filename</string>
+    <string name="inbox_edit_name_body">This name is what the rename pipeline starts from. Use it to fix typos, weird artist tags or anything the watcher picked up wrong.</string>
+    <string name="inbox_edit_name_save">Save</string>
+    <string name="inbox_edit_name_cancel">Cancel</string>
+    <string name="inbox_edit_name_reset">Reset</string>
+    <string name="inbox_edited_label">Edited</string>
+    <string name="inbox_original_was">was: %1$s</string>
     <string name="inbox_setup_title">Finish setting up Mangako</string>
     <string name="inbox_setup_body">Connect your LANraragi server and pick at least one folder to watch before Mangako can pick up new downloads.</string>
     <string name="inbox_setup_step_server">Connect your LANraragi server</string>

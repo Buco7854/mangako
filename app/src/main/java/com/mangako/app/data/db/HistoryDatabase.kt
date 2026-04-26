@@ -55,6 +55,14 @@ data class PendingEntry(
      * created before this column existed.
      */
     val finalName: String? = null,
+    /**
+     * User-supplied filename override. When set, the pipeline's filename
+     * mutations are bypassed and this exact string (with a `.cbz` suffix
+     * forced) is what gets uploaded. Lets the user fix a bad detection
+     * by hand before tapping Process. NULL means "let the pipeline rename
+     * the file" (the default).
+     */
+    val nameOverride: String? = null,
 )
 
 /** Row of a `GROUP BY status` query — used for the Inbox filter chip counts. */
@@ -110,6 +118,9 @@ interface PendingDao {
     @Query("UPDATE pending SET status = :status, finalName = :finalName WHERE id = :id")
     suspend fun setStatusAndFinal(id: String, status: String, finalName: String)
 
+    @Query("UPDATE pending SET nameOverride = :override WHERE id = :id")
+    suspend fun setNameOverride(id: String, override: String?)
+
     @Query("DELETE FROM pending WHERE id = :id")
     suspend fun delete(id: String)
 
@@ -127,7 +138,7 @@ class Converters {
         HistoryJson.encodeToString(trail)
 }
 
-@Database(entities = [HistoryEntry::class, PendingEntry::class], version = 2, exportSchema = false)
+@Database(entities = [HistoryEntry::class, PendingEntry::class], version = 3, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class HistoryDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao

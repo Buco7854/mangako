@@ -58,6 +58,12 @@ class ProcessCbzWorker @AssistedInject constructor(
         val pendingId = inputData.getString(KEY_PENDING_ID)
         val settings = settingsRepo.flow.first()
         val config = pipelineRepo.flow.first()
+        // The user may have set a custom filename from the Inbox card
+        // ("Edit name") before tapping Process. We always look up the
+        // pending row here rather than threading the override through
+        // input Data, so an override applied after the work was already
+        // enqueued (e.g. via approveAll) is still picked up.
+        val nameOverride = pendingId?.let { pendingRepo.find(it)?.nameOverride }
 
         val docFile = DocumentFile.fromSingleUri(applicationContext, android.net.Uri.parse(uriStr))
             ?: return@withContext Result.failure() // malformed URI — never going to work
@@ -85,10 +91,16 @@ class ProcessCbzWorker @AssistedInject constructor(
             // 3. Metadata → pipeline variable context.
             val metadata = cbzProcessor.extractMetadata(localCopy)
 
-            // 4. Run pipeline.
+            // 4. Run pipeline. If the user manually corrected the source
+            //    filename via "Edit name" on the Inbox card, the override
+            //    feeds in as the pipeline's starting name — the rest of
+            //    the rules (sanitize, language tags, ComicInfo sync) all
+            //    still apply on top of the user's edit, which matches the
+            //    "fix the input then process normally" mental model.
+            val pipelineInput = nameOverride?.takeIf { it.isNotBlank() } ?: originalName
             val runOut = PipelineExecutor().run(
                 config,
-                PipelineExecutor.Input(originalFilename = originalName, metadata = metadata),
+                PipelineExecutor.Input(originalFilename = pipelineInput, metadata = metadata),
             )
             val finalName = ensureCbzSuffix(runOut.finalFilename)
 

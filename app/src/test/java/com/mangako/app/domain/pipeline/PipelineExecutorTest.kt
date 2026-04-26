@@ -209,6 +209,25 @@ class PipelineExecutorTest {
         assertEquals("My Series", out.comicInfoUpdates["Series"])
     }
 
+    @Test fun `WriteComicInfo with __filename_title__ strips bracket tags from the title`() {
+        // Mirrors the default template — the renamed filename keeps its
+        // bracket decorations for archival, but ComicInfo's <Title>
+        // gets the clean "Series Ch 39" form.
+        val cfg = PipelineConfig(
+            rules = listOf(
+                Rule.WriteComicInfo(
+                    id = "wci",
+                    fields = mapOf("Title" to "%__filename_title__%"),
+                ),
+            ),
+        )
+        val out = executor.run(
+            cfg,
+            PipelineExecutor.Input("[Author] Series Ch 39 [English] [Manhwa].cbz"),
+        )
+        assertEquals("Series Ch 39", out.comicInfoUpdates["Title"])
+    }
+
     @Test fun `clean whitespace collapses repeated spaces and trims`() {
         val cfg = PipelineConfig(rules = listOf(Rule.CleanWhitespace(id = "1", trim = true)))
         val out = executor.run(cfg, PipelineExecutor.Input("   foo    bar   .cbz  "))

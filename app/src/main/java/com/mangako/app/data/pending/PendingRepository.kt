@@ -26,6 +26,9 @@ data class PendingFile(
      *  for not-yet-processed rows. Lets the Inbox/Processed view show the
      *  truth without a fuzzy join against history-by-original-name. */
     val finalName: String? = null,
+    /** Optional user-set filename to use instead of the pipeline rename.
+     *  When non-null, ProcessCbzWorker uploads under exactly this name. */
+    val nameOverride: String? = null,
 )
 
 /**
@@ -97,6 +100,13 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
         dao.setStatusAndFinal(id, PendingStatus.DONE.name, finalName)
 
     /**
+     * Persist a user-set filename for [id]. Empty / blank input clears
+     * the override (so the pipeline's default rename takes over again).
+     */
+    suspend fun setNameOverride(id: String, override: String?) =
+        dao.setNameOverride(id, override?.takeIf { it.isNotBlank() })
+
+    /**
      * Resets a previously-processed or ignored row back to PENDING so the
      * user can run it through the pipeline again. The original file URI
      * is kept; if the underlying SAF document no longer resolves (file was
@@ -117,5 +127,6 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
         folderUri = folderUri,
         status = runCatching { PendingStatus.valueOf(status) }.getOrDefault(PendingStatus.PENDING),
         finalName = finalName,
+        nameOverride = nameOverride,
     )
 }

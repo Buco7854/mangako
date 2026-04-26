@@ -1,5 +1,6 @@
 package com.mangako.app.ui.inbox
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +57,7 @@ import java.util.Date
 @Composable
 fun InboxScreen(
     onOpenSettings: () -> Unit = {},
+    onOpenPipeline: () -> Unit = {},
     viewModel: InboxViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -75,7 +77,11 @@ fun InboxScreen(
     ) { inner ->
         Column(Modifier.padding(inner).fillMaxSize()) {
             if (!state.setup.isComplete) {
-                SetupBanner(setup = state.setup, onOpenSettings = onOpenSettings)
+                SetupBanner(
+                    setup = state.setup,
+                    onOpenSettings = onOpenSettings,
+                    onOpenPipeline = onOpenPipeline,
+                )
             }
 
             if (state.items.isEmpty()) {
@@ -106,7 +112,11 @@ fun InboxScreen(
 }
 
 @Composable
-private fun SetupBanner(setup: InboxViewModel.SetupStatus, onOpenSettings: () -> Unit) {
+private fun SetupBanner(
+    setup: InboxViewModel.SetupStatus,
+    onOpenSettings: () -> Unit,
+    onOpenPipeline: () -> Unit,
+) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         colors = CardDefaults.elevatedCardColors(
@@ -127,22 +137,36 @@ private fun SetupBanner(setup: InboxViewModel.SetupStatus, onOpenSettings: () ->
                 color = MaterialTheme.colorScheme.onTertiaryContainer,
             )
             Spacer(Modifier.height(12.dp))
-            SetupStep(stringResource(R.string.inbox_setup_step_server), done = setup.serverConnected)
-            SetupStep(stringResource(R.string.inbox_setup_step_folder), done = setup.foldersConfigured)
-            SetupStep(stringResource(R.string.inbox_setup_step_rules), done = setup.rulesConfigured)
-            Spacer(Modifier.height(12.dp))
-            Button(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.inbox_setup_open_settings))
-            }
+            // Each step is tappable when incomplete and routes the user to the
+            // exact place that fixes it — Settings for server/folder, Pipeline
+            // for rules. Cuts the "ok now where do I go?" hop.
+            SetupStep(
+                label = stringResource(R.string.inbox_setup_step_server),
+                done = setup.serverConnected,
+                onTap = onOpenSettings.takeUnless { setup.serverConnected },
+            )
+            SetupStep(
+                label = stringResource(R.string.inbox_setup_step_folder),
+                done = setup.foldersConfigured,
+                onTap = onOpenSettings.takeUnless { setup.foldersConfigured },
+            )
+            SetupStep(
+                label = stringResource(R.string.inbox_setup_step_rules),
+                done = setup.rulesConfigured,
+                onTap = onOpenPipeline.takeUnless { setup.rulesConfigured },
+            )
         }
     }
 }
 
 @Composable
-private fun SetupStep(label: String, done: Boolean) {
+private fun SetupStep(label: String, done: Boolean, onTap: (() -> Unit)?) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .let { if (onTap != null) it.clickable(onClick = onTap) else it }
+            .padding(vertical = 8.dp),
     ) {
         Icon(
             imageVector = if (done) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
@@ -154,6 +178,7 @@ private fun SetupStep(label: String, done: Boolean) {
         Spacer(Modifier.width(10.dp))
         Text(
             label,
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onTertiaryContainer,
         )

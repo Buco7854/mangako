@@ -2,6 +2,8 @@ package com.mangako.app.ui.pipeline
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,25 +13,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.DragHandle
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -61,15 +64,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mangako.app.R
 import com.mangako.app.domain.rule.Rule
 import kotlinx.coroutines.launch
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PipelineScreen(
-    onBack: () -> Unit = {},
-    viewModel: PipelineViewModel = hiltViewModel(),
-) {
+fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
     val state by viewModel.ui.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -116,11 +114,6 @@ fun PipelineScreen(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.pipeline_title), fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Outlined.ArrowBack, stringResource(R.string.pipeline_back_cd))
-                    }
-                },
                 actions = {
                     IconButton(onClick = { showOverflow = true }) {
                         Icon(Icons.Outlined.MoreVert, stringResource(R.string.pipeline_overflow_cd))
@@ -180,53 +173,37 @@ fun PipelineScreen(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { inner ->
         if (!hasRules) {
-            // Empty pipeline — show only the hero card. No preview to show
-            // (running a 0-rule pipeline returns the input unchanged).
             EmptyState(
                 onLoadDefaults = viewModel::loadLanraragiDefaults,
                 onAdd = { showAdd = true },
                 modifier = Modifier.padding(inner).fillMaxSize(),
             )
         } else {
-            val listState = rememberLazyListState()
-            val reorder = rememberReorderableLazyListState(listState) { from, to ->
-                // Subtract 2 because items 0 and 1 are the preview card and
-                // the section header — only rule items participate in reorder.
-                viewModel.move(from.index - 2, to.index - 2)
-            }
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.padding(inner).fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                item(key = "_preview", contentType = "preview") {
-                    PreviewCard(
-                        filename = state.preview.input,
-                        final = state.previewedFinal,
-                        vars = state.previewedVariables,
-                        onFilenameChange = viewModel::updatePreviewInput,
-                    )
-                }
-                item(key = "_steps_header", contentType = "header") {
-                    SectionHeader(stringResource(R.string.pipeline_steps_header, rules.size))
-                }
-                items(rules, key = { it.id }, contentType = { "rule" }) { rule ->
-                    ReorderableItem(reorder, key = rule.id) { dragging ->
+            Column(Modifier.padding(inner).fillMaxSize()) {
+                PreviewBar(
+                    filename = state.preview.input,
+                    final = state.previewedFinal,
+                    vars = state.previewedVariables,
+                    onFilenameChange = viewModel::updatePreviewInput,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(rules, key = { it.id }) { rule ->
+                        val idx = rules.indexOf(rule)
                         RuleCard(
                             rule = rule,
-                            dragging = dragging,
+                            index = idx,
+                            isFirst = idx == 0,
+                            isLast = idx == rules.size - 1,
                             onToggle = { viewModel.toggleEnabled(rule.id) },
                             onEdit = { editingRule = rule },
                             onDelete = { viewModel.remove(rule.id) },
-                            dragHandle = {
-                                IconButton(modifier = Modifier.draggableHandle(), onClick = {}) {
-                                    Icon(
-                                        Icons.Outlined.DragHandle,
-                                        contentDescription = stringResource(R.string.rule_reorder_cd),
-                                    )
-                                }
-                            },
+                            onMoveUp = { viewModel.moveUp(rule.id) },
+                            onMoveDown = { viewModel.moveDown(rule.id) },
                         )
                     }
                 }
@@ -235,7 +212,7 @@ fun PipelineScreen(
     }
 
     if (showAdd) {
-        AddRuleDialog(
+        AddRuleSheet(
             onDismiss = { showAdd = false },
             onPick = { kind ->
                 showAdd = false
@@ -277,55 +254,91 @@ fun PipelineScreen(
     }
 }
 
+/**
+ * Slim two-mode preview bar:
+ *   - collapsed: a single line "Preview: input.cbz → final.cbz" so it doesn't
+ *     dominate the screen when the user is scanning rules.
+ *   - expanded: the editable input field + the variable chips, for users who
+ *     are tuning a specific filename or want to see what %language% resolves to.
+ *
+ * Default is collapsed so the rules list — the actual product surface —
+ * gets the visual weight.
+ */
 @Composable
-private fun PreviewCard(
+private fun PreviewBar(
     filename: String,
     final: String,
     vars: Map<String, String>,
     onFilenameChange: (String) -> Unit,
 ) {
-    ElevatedCard(
+    var expanded by remember { mutableStateOf(false) }
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
+        color = MaterialTheme.colorScheme.surfaceContainerLowest,
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(
-                stringResource(R.string.pipeline_live_preview),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = filename,
-                onValueChange = onFilenameChange,
-                label = { Text(stringResource(R.string.pipeline_input_filename)) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("→ ", style = MaterialTheme.typography.titleMedium)
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    final.ifEmpty { stringResource(R.string.pipeline_empty_preview) },
+                    stringResource(R.string.pipeline_preview_collapsed_label),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    if (expanded) filename else "$filename → ${final.ifEmpty { "?" }}",
+                    style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription = stringResource(
+                        if (expanded) R.string.pipeline_preview_collapse_cd
+                        else R.string.pipeline_preview_expand_cd,
+                    ),
                 )
             }
-            if (vars.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    vars.entries.take(5).forEach { (k, v) ->
-                        AssistChip(
-                            onClick = {},
-                            label = { Text("%$k%=${v.take(16)}") },
+            AnimatedVisibility(visible = expanded) {
+                Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                    OutlinedTextField(
+                        value = filename,
+                        onValueChange = onFilenameChange,
+                        label = { Text(stringResource(R.string.pipeline_input_filename)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("→ ", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            final.ifEmpty { stringResource(R.string.pipeline_empty_preview) },
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
+                    }
+                    if (vars.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            vars.entries.take(5).forEach { (k, v) ->
+                                AssistChip(
+                                    onClick = {},
+                                    label = { Text("%$k%=${v.take(16)}") },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -333,13 +346,3 @@ private fun PreviewCard(
     }
 }
 
-@Composable
-private fun SectionHeader(text: String) {
-    Text(
-        text,
-        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.primary,
-    )
-}

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -100,6 +101,7 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
                 if (pendingCount > 0) Badge { Text(pendingCount.toString()) }
             }) { Icon(Icons.Outlined.Inbox, null) }
         },
+        Dest("pipeline", stringResource(R.string.nav_pipeline)) { Icon(Icons.Outlined.Tune, null) },
         Dest("history", stringResource(R.string.nav_history)) { Icon(Icons.Outlined.History, null) },
         Dest("settings", stringResource(R.string.nav_settings)) { Icon(Icons.Outlined.Settings, null) },
     )
@@ -134,15 +136,14 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
             modifier = Modifier.padding(inner),
         ) {
             composable("inbox") {
-                InboxScreen(onOpenSettings = { nav.navigate("settings") })
+                InboxScreen(
+                    onOpenSettings = { nav.navigate("settings") },
+                    onOpenPipeline = { nav.navigate("pipeline") },
+                )
             }
+            composable("pipeline") { PipelineScreen() }
             composable("history") { HistoryScreen(onOpen = { id -> nav.navigate("history/$id") }) }
-            composable("settings") {
-                SettingsScreen(onOpenPipeline = { nav.navigate("settings/pipeline") })
-            }
-            composable("settings/pipeline") {
-                PipelineScreen(onBack = { nav.popBackStack() })
-            }
+            composable("settings") { SettingsScreen() }
             composable("history/{id}") { entry ->
                 val id = entry.arguments?.getString("id").orEmpty()
                 HistoryDetailScreen(historyId = id, onBack = { nav.popBackStack() })

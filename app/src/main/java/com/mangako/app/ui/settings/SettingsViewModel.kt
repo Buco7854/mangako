@@ -7,7 +7,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mangako.app.R
 import com.mangako.app.data.lanraragi.LanraragiClient
-import com.mangako.app.data.pipeline.PipelineRepository
 import com.mangako.app.data.settings.SettingsRepository
 import com.mangako.app.work.DirectoryScanWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,7 +15,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -25,19 +23,12 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repo: SettingsRepository,
-    pipelineRepo: PipelineRepository,
 ) : ViewModel() {
 
     data class TestResult(val ok: Boolean, val message: String)
 
     val settings: StateFlow<SettingsRepository.Settings> = repo.flow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsRepository.Settings())
-
-    /** Number of rules in the active pipeline — surfaced as a summary on the
-     *  "Edit rename rules" entry. */
-    val pipelineRuleCount: StateFlow<Int> = pipelineRepo.flow
-        .map { it.rules.size }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val _testResult = MutableStateFlow<TestResult?>(null)
     val testResult: StateFlow<TestResult?> = _testResult.asStateFlow()

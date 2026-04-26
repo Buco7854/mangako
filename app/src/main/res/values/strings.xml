@@ -4,19 +4,13 @@
 
     <!-- Navigation -->
     <string name="nav_inbox">Inbox</string>
+    <string name="nav_pipeline">Pipeline</string>
     <string name="nav_history">History</string>
     <string name="nav_settings">Settings</string>
 
-    <!-- Settings → rename rules entry -->
-    <string name="settings_section_rules">Renaming</string>
-    <string name="settings_rules_summary_one">1 rule active</string>
-    <string name="settings_rules_summary_other">%1$d rules active</string>
-    <string name="settings_rules_summary_none">No rules yet — files will keep their original names</string>
-    <string name="settings_rules_edit">Edit rename rules</string>
 
     <!-- Pipeline screen -->
-    <string name="pipeline_title">Edit rename rules</string>
-    <string name="pipeline_back_cd">Back to settings</string>
+    <string name="pipeline_title">Pipeline</string>
     <string name="pipeline_overflow_cd">More actions</string>
     <string name="pipeline_live_preview">Live preview</string>
     <string name="pipeline_live_preview_hint">Type a sample filename to see what your rules would produce.</string>
@@ -85,14 +79,37 @@
     <string name="dialog_import_button_busy">Importing…</string>
     <string name="dialog_import_pick_file">Pick file…</string>
     <string name="dialog_import_error">That JSON couldn\'t be parsed. Double-check the schema and try again.</string>
-    <string name="rule_kind_extract_xml">Extract XML metadata</string>
-    <string name="rule_kind_extract_regex">Extract regex → variable</string>
-    <string name="rule_kind_regex">Regex replace</string>
+    <string name="rule_kind_extract_xml">Read ComicInfo</string>
+    <string name="rule_kind_extract_xml_blurb">Load Title, Series, Writer, etc. from the archive</string>
+    <string name="rule_kind_extract_regex">Extract value</string>
+    <string name="rule_kind_extract_regex_blurb">Pull a value out of one variable into another</string>
+    <string name="rule_kind_regex">Find &amp; replace</string>
+    <string name="rule_kind_regex_blurb">Match a pattern and rewrite it</string>
     <string name="rule_kind_append">Append text</string>
+    <string name="rule_kind_append_blurb">Add text to the end of the filename</string>
     <string name="rule_kind_prepend">Prepend text</string>
-    <string name="rule_kind_relocator">Tag relocator</string>
-    <string name="rule_kind_conditional">Conditional</string>
-    <string name="rule_kind_cleanws">Clean whitespace</string>
+    <string name="rule_kind_prepend_blurb">Add text to the start of the filename</string>
+    <string name="rule_kind_relocator">Move tag</string>
+    <string name="rule_kind_relocator_blurb">Reposition something like (C96) to the front or end</string>
+    <string name="rule_kind_conditional">If / else</string>
+    <string name="rule_kind_conditional_blurb">Run different rules depending on a condition</string>
+    <string name="rule_kind_cleanws">Tidy whitespace</string>
+    <string name="rule_kind_cleanws_blurb">Collapse double spaces and trim the ends</string>
+
+    <!-- Rule overflow menu -->
+    <string name="rule_move_up">Move up</string>
+    <string name="rule_move_down">Move down</string>
+
+    <!-- Conditional editor: nested branches -->
+    <string name="editor_conditional_then_header">If true</string>
+    <string name="editor_conditional_else_header">Otherwise</string>
+    <string name="editor_conditional_branch_empty">No nested rules yet</string>
+    <string name="editor_conditional_add_to_branch">Add a rule</string>
+
+    <!-- Live preview bar -->
+    <string name="pipeline_preview_collapsed_label">Preview</string>
+    <string name="pipeline_preview_expand_cd">Expand preview</string>
+    <string name="pipeline_preview_collapse_cd">Collapse preview</string>
 
     <!-- Inbox -->
     <string name="inbox_scan_now_cd">Scan now</string>
@@ -106,7 +123,6 @@
     <string name="inbox_rename_to">Will be renamed to</string>
     <string name="inbox_setup_title">Finish setting up Mangako</string>
     <string name="inbox_setup_body">Connect your LANraragi server and pick at least one folder to watch before Mangako can pick up new downloads.</string>
-    <string name="inbox_setup_open_settings">Open settings</string>
     <string name="inbox_setup_step_server">Connect your LANraragi server</string>
     <string name="inbox_setup_step_folder">Pick a folder to watch</string>
     <string name="inbox_setup_step_rules">Add at least one renaming rule</string>

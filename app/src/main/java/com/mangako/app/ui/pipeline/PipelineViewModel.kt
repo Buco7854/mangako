@@ -2,6 +2,15 @@ package com.mangako.app.ui.pipeline
 
 import android.content.Context
 import androidx.annotation.StringRes
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.CallSplit
+import androidx.compose.material.icons.outlined.CleaningServices
+import androidx.compose.material.icons.outlined.ContentPasteSearch
+import androidx.compose.material.icons.outlined.FindReplace
+import androidx.compose.material.icons.outlined.FormatQuote
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mangako.app.R
@@ -88,6 +97,30 @@ class PipelineViewModel @Inject constructor(
         }
     }
 
+    fun moveUp(id: String) = viewModelScope.launch {
+        repo.update { cfg ->
+            val idx = cfg.rules.indexOfFirst { it.id == id }
+            if (idx <= 0) cfg
+            else {
+                val list = cfg.rules.toMutableList()
+                list.add(idx - 1, list.removeAt(idx))
+                cfg.copy(rules = list)
+            }
+        }
+    }
+
+    fun moveDown(id: String) = viewModelScope.launch {
+        repo.update { cfg ->
+            val idx = cfg.rules.indexOfFirst { it.id == id }
+            if (idx < 0 || idx >= cfg.rules.size - 1) cfg
+            else {
+                val list = cfg.rules.toMutableList()
+                list.add(idx + 1, list.removeAt(idx))
+                cfg.copy(rules = list)
+            }
+        }
+    }
+
     fun replace(id: String, updated: Rule) = viewModelScope.launch {
         repo.update { cfg ->
             cfg.copy(rules = cfg.rules.map { r -> if (r.id == id) updated else r })
@@ -146,14 +179,30 @@ class PipelineViewModel @Inject constructor(
     }
 }
 
-enum class RuleKind(@StringRes val labelRes: Int) {
-    ExtractXml(R.string.rule_kind_extract_xml),
-    ExtractRegex(R.string.rule_kind_extract_regex),
-    Regex(R.string.rule_kind_regex),
-    Append(R.string.rule_kind_append),
-    Prepend(R.string.rule_kind_prepend),
-    Relocator(R.string.rule_kind_relocator),
-    Conditional(R.string.rule_kind_conditional),
-    CleanWs(R.string.rule_kind_cleanws),
+enum class RuleKind(
+    @StringRes val labelRes: Int,
+    @StringRes val blurbRes: Int,
+    val icon: ImageVector,
+) {
+    ExtractXml(R.string.rule_kind_extract_xml, R.string.rule_kind_extract_xml_blurb, Icons.Outlined.Article),
+    ExtractRegex(R.string.rule_kind_extract_regex, R.string.rule_kind_extract_regex_blurb, Icons.Outlined.ContentPasteSearch),
+    Regex(R.string.rule_kind_regex, R.string.rule_kind_regex_blurb, Icons.Outlined.FindReplace),
+    Append(R.string.rule_kind_append, R.string.rule_kind_append_blurb, Icons.Outlined.FormatQuote),
+    Prepend(R.string.rule_kind_prepend, R.string.rule_kind_prepend_blurb, Icons.Outlined.FormatQuote),
+    Relocator(R.string.rule_kind_relocator, R.string.rule_kind_relocator_blurb, Icons.Outlined.SwapHoriz),
+    Conditional(R.string.rule_kind_conditional, R.string.rule_kind_conditional_blurb, Icons.Outlined.CallSplit),
+    CleanWs(R.string.rule_kind_cleanws, R.string.rule_kind_cleanws_blurb, Icons.Outlined.CleaningServices),
+}
+
+/** The visual identity shown in rule cards, the picker, and the audit log. */
+fun Rule.icon(): ImageVector = when (this) {
+    is Rule.ExtractXmlMetadata -> Icons.Outlined.Article
+    is Rule.ExtractRegex -> Icons.Outlined.ContentPasteSearch
+    is Rule.RegexReplace -> Icons.Outlined.FindReplace
+    is Rule.StringAppend -> Icons.Outlined.FormatQuote
+    is Rule.StringPrepend -> Icons.Outlined.FormatQuote
+    is Rule.TagRelocator -> Icons.Outlined.SwapHoriz
+    is Rule.ConditionalFormat -> Icons.Outlined.CallSplit
+    is Rule.CleanWhitespace -> Icons.Outlined.CleaningServices
 }
 

@@ -92,6 +92,21 @@ class ProcessCbzWorker @AssistedInject constructor(
             )
             val finalName = ensureCbzSuffix(runOut.finalFilename)
 
+            // 4b. Rewrite ComicInfo.xml inside the cached copy so the
+            //     embedded <Title> matches the renamed filename. Without
+            //     this, LANraragi's auto-extraction (and any other reader)
+            //     keeps showing the upstream <Title> from Mihon (e.g.
+            //     'Chapter 39') even when the file on disk is named
+            //     correctly. Best-effort: a failure here doesn't block the
+            //     upload — LanraragiClient also calls the metadata API
+            //     after upload as a belt-and-suspenders fallback.
+            runCatching {
+                cbzProcessor.updateMetadata(
+                    cbz = localCopy,
+                    fieldsToSet = mapOf("Title" to finalName.removeSuffix(".cbz")),
+                )
+            }
+
             // 5. Upload.
             val client = LanraragiClient(
                 baseUrl = settings.lanraragiUrl,

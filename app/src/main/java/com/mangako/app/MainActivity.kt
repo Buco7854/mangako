@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -30,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -131,10 +133,19 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        // Match the body and TopAppBar colour so the chrome reads as one
+        // continuous surface — no visible band between the last card and the
+        // navigation bar. Default Material3 NavigationBar layers a 3.dp tonal
+        // tint on top of surfaceContainer, which made it visibly distinct
+        // even though the underlying colour token was the same.
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         bottomBar = {
             val showBar = destinations.any { it.route == currentRoute }
             if (showBar) {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    tonalElevation = 0.dp,
+                ) {
                     destinations.forEach { dest ->
                         NavigationBarItem(
                             selected = backStack?.destination?.hierarchy?.any { it.route == dest.route } == true,

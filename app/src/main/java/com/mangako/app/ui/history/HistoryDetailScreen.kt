@@ -63,6 +63,9 @@ fun HistoryDetailScreen(
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         topBar = {
             TopAppBar(
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
                 title = { Text(stringResource(R.string.history_detail_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -109,7 +113,17 @@ fun EmptyState(
 @Composable
 fun AddRuleSheet(onDismiss: () -> Unit, onPick: (RuleKind) -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        // Default BottomSheetDefaults.windowInsets covers the status bar but
+        // not the display cutout — on phones with a centred camera punch-hole
+        // the sheet's title is partly hidden behind the camera. Combining the
+        // system bars with the cutout pushes the whole content area below
+        // both. Bottom is included too so we don't draw under the gesture
+        // navigation pill.
+        contentWindowInsets = { WindowInsets.systemBars.union(WindowInsets.displayCutout) },
+    ) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 24.dp)) {
             Text(
                 stringResource(R.string.dialog_add_rule_title),

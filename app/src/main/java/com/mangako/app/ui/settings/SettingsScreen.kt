@@ -86,7 +86,14 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.settings_title), fontWeight = FontWeight.SemiBold) }) },
+        topBar = {
+            TopAppBar(
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
+                title = { Text(stringResource(R.string.settings_title), fontWeight = FontWeight.SemiBold) },
+            )
+        },
         snackbarHost = { SnackbarHost(snackbar) { Snackbar(it) } },
     ) { inner ->
         Column(

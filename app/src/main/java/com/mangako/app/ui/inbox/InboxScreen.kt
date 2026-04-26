@@ -78,6 +78,9 @@ fun InboxScreen(
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         topBar = {
             TopAppBar(
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
                 title = { Text(stringResource(R.string.nav_inbox), fontWeight = FontWeight.SemiBold) },
                 actions = {
                     IconButton(onClick = {

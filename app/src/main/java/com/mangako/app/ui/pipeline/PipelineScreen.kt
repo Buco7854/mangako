@@ -233,10 +233,13 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
             } else {
                 LazyColumn(
                     modifier = Modifier.padding(inner).fillMaxSize(),
-                    // Top padding gives the first card breathing room; the
-                    // bottom padding clears the FAB AND keeps the last card
-                    // from butting up against the bottom navigation bar.
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 96.dp),
+                    // Top + horizontal breathing room. Bottom is intentionally
+                    // small so the rules occupy the full area down to the
+                    // bottom navigation bar — the FAB overlaps the bottom-
+                    // right corner of the last card when scrolled, which is
+                    // the standard Material behaviour and avoids the dead
+                    // 'card-zone-floating-above-the-bar' look.
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(rules, key = { it.id }) { rule ->
@@ -500,7 +503,7 @@ private fun ReorderableRulesList(
     LazyColumn(
         state = listState,
         modifier = modifier,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 96.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         items(rules, key = { it.id }) { rule ->

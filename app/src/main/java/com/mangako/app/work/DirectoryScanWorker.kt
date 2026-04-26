@@ -158,13 +158,12 @@ class DirectoryScanWorker @AssistedInject constructor(
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
-                PeriodicWorkRequestBuilder<DirectoryScanWorker>(SCAN_INTERVAL_MINUTES, TimeUnit.MINUTES)
-                    .setConstraints(
-                        Constraints.Builder()
-                            .setRequiredNetworkType(NetworkType.CONNECTED)
-                            .build(),
-                    )
-                    .build(),
+                // No network constraint: scanning watched folders is a local-
+                // disk operation, so requiring CONNECTED would cause the worker
+                // to silently sit out whenever the user is offline (or
+                // misreports their state to WorkManager). The actual upload
+                // step in ProcessCbzWorker keeps its own network constraint.
+                PeriodicWorkRequestBuilder<DirectoryScanWorker>(SCAN_INTERVAL_MINUTES, TimeUnit.MINUTES).build(),
             )
         }
 

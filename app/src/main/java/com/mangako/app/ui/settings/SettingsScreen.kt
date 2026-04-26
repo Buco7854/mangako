@@ -25,13 +25,13 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -94,7 +94,10 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 .padding(inner)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                // No bottom padding — the section card flows to the
+                // bottom navigation bar. Previously a stray 8.dp left a
+                // visible gap below the last section.
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Section(stringResource(R.string.settings_section_server)) {
@@ -278,23 +281,45 @@ private fun FolderRow(uri: String, onRemove: () -> Unit) {
             androidx.documentfile.provider.DocumentFile.fromTreeUri(context, android.net.Uri.parse(uri))?.name
         }.getOrNull() ?: android.net.Uri.parse(uri).lastPathSegment ?: uri
     }
-    ListItem(
-        leadingContent = { Icon(Icons.Outlined.FolderOpen, null) },
-        headlineContent = { Text(display, fontWeight = FontWeight.Medium) },
-        supportingContent = {
-            Text(
-                uri,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
+    // Custom Surface row instead of the flat ListItem, which had no rounded
+    // corners and clashed with the rounded Section card it was nested in.
+    // Sits one tonal step above the parent Section so it reads as an inset
+    // chip rather than another full card.
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Outlined.FolderOpen,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
             )
-        },
-        trailingContent = {
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    display,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    uri,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
             IconButton(onClick = onRemove) {
                 Icon(Icons.Outlined.Close, stringResource(R.string.settings_remove_folder_cd))
             }
-        },
-    )
+        }
+    }
 }
 
 @Composable

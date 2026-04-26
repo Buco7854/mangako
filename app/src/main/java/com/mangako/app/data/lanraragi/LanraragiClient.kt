@@ -11,13 +11,15 @@ import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.forms.ChannelProvider
+import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
-import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
@@ -61,9 +63,11 @@ class LanraragiClient(
      * `Content-Disposition` so a misconfigured pipeline can't produce a
      * traversal-looking filename.
      *
-     * `submitFormWithBinaryData` defaults to POST; we override the verb on
-     * the request block since LANraragi's spec registers this operation as
-     * PUT and Mojolicious refuses other verbs with a 404.
+     * Uses [MultiPartFormDataContent] directly with [HttpClient.put] rather
+     * than [submitFormWithBinaryData], because the latter is hard-wired
+     * around POST semantics and produced a body LANraragi answered with 400
+     * even after the verb override. The explicit `put { setBody(...) }` form
+     * is what Ktor recommends for non-POST multipart uploads.
      */
     suspend fun uploadArchive(file: File, uploadAs: String): Result<UploadResponse> {
         require(file.exists()) { "File does not exist: ${file.path}" }
@@ -71,9 +75,8 @@ class LanraragiClient(
         val client = engine(UPLOAD_TIMEOUT_MS)
         return try {
             val endpoint = baseUrl.trimEnd('/') + "/api/archives/upload"
-            val response: HttpResponse = client.submitFormWithBinaryData(
-                url = endpoint,
-                formData = formData {
+            val body = MultiPartFormDataContent(
+                formData {
                     append(
                         key = "file",
                         value = ChannelProvider(size = file.length()) { file.readChannel() },
@@ -86,17 +89,24 @@ class LanraragiClient(
                     )
                     append("title", safeName.removeSuffix(".cbz"))
                 },
-            ) {
-                method = HttpMethod.Put
-            }
+            )
+            val response: HttpResponse = client.put(endpoint) { setBody(body) }
             when (response.status) {
                 HttpStatusCode.OK -> Result.success(response.body<UploadResponse>())
-                else -> Result.failure(
-                    LanraragiException(
-                        code = response.status.value,
-                        message = "HTTP ${response.status.value}: ${response.status.description}",
-                    ),
-                )
+                else -> {
+                    // Read the body so the user gets the server's actual error
+                    // message instead of just 'HTTP 400'. LANraragi returns a
+                    // small JSON snippet like {"error":"..."} on failure;
+                    // even when it doesn't, an arbitrary text body is more
+                    // useful than nothing in the audit trail.
+                    val detail = runCatching { response.bodyAsText() }.getOrNull()?.trim().orEmpty()
+                    val msg = buildString {
+                        append("HTTP ").append(response.status.value)
+                        append(": ").append(response.status.description)
+                        if (detail.isNotEmpty()) append(" — ").append(detail.take(500))
+                    }
+                    Result.failure(LanraragiException(code = response.status.value, message = msg))
+                }
             }
         } catch (t: Throwable) {
             Result.failure(t)

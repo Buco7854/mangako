@@ -129,11 +129,17 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
     val hasRules = rules.isNotEmpty()
 
     Scaffold(
-        // Match the bottom nav's tone so the area between the last card and
-        // the nav bar reads as one continuous surface — previously the body
-        // was the (lighter) background tone and the cards visually "floated"
-        // above the nav bar with a stripe of mismatched colour between them.
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        // Zero out the system-bar insets on this inner Scaffold. The OUTER
+        // Scaffold (in MainActivity) already pads the NavHost area for its
+        // own NavigationBar slot, which itself absorbs the system gesture
+        // nav inset. Default contentWindowInsets here would inset the body's
+        // bottom by the system nav bar a SECOND time, leaving a visible gap
+        // between the last card and the bottom NavigationBar — the
+        // 'pipeline floats above the bar' look users have been reporting.
+        // The TopAppBar handles its own status-bar inset internally so we
+        // can drop the top inset too.
+        contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
                 colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
@@ -262,7 +268,17 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
                             onDelete = { viewModel.remove(rule.id) },
                             onMoveUp = { viewModel.moveUp(rule.id) },
                             onMoveDown = { viewModel.moveDown(rule.id) },
-                            modifier = Modifier.animateItem(),
+                            // Placement-only animation: animateItem()'s default
+                            // includes fade-in / fade-out specs that fire on
+                            // every reorder because LazyColumn briefly views
+                            // the swapped rows as 'left' and 'arrived' rather
+                            // than 'moved'. Disabling the fade specs keeps the
+                            // movement smooth without the flicker users were
+                            // seeing on Move up / Move down.
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = null,
+                                fadeOutSpec = null,
+                            ),
                         )
                     }
                 }

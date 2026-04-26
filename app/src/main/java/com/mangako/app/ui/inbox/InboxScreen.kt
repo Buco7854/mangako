@@ -317,6 +317,20 @@ private fun InboxCard(
     onReprocess: () -> Unit,
     onForget: () -> Unit,
 ) {
+    when (filter) {
+        InboxViewModel.Filter.PENDING -> PendingCard(item, onApprove, onReject)
+        InboxViewModel.Filter.PROCESSED -> ProcessedCard(item, onForget)
+        InboxViewModel.Filter.IGNORED -> IgnoredCard(item, onReprocess, onForget)
+    }
+}
+
+/** The full-detail card — rename preview, size, timestamp, decide buttons. */
+@Composable
+private fun PendingCard(
+    item: InboxViewModel.InboxItem,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+) {
     val file = item.file
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -338,6 +352,67 @@ private fun InboxCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                RenameLine(item.previewedFinal)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "${humanSize(file.sizeBytes)} · ${DateFormat.getDateTimeInstance().format(Date(file.detectedAt))}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onReject, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.Close, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.inbox_ignore))
+                }
+                Button(onClick = onApprove, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.Check, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.inbox_process))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Minimal view for already-processed files. The user wanted just the
+ * before/after filenames — no size, no timestamp, no Reprocess button:
+ * the source .cbz is typically deleted on success (deleteOnSuccess
+ * defaults true), so 'Reprocess' would silently fail. Only Forget here.
+ *
+ * The 'after' filename comes from the actual upload audit trail
+ * (item.recordedFinal) when available, so it reflects what really
+ * landed on the server rather than re-running today's pipeline against
+ * the original name.
+ */
+@Composable
+private fun ProcessedCard(
+    item: InboxViewModel.InboxItem,
+    onForget: () -> Unit,
+) {
+    val file = item.file
+    val finalName = item.recordedFinal ?: item.previewedFinal
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    file.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.AutoMirrored.Outlined.ArrowForward,
@@ -347,55 +422,82 @@ private fun InboxCard(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        item.previewedFinal,
-                        style = MaterialTheme.typography.bodySmall,
+                        finalName,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
                         fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.primary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "${humanSize(file.sizeBytes)} · ${DateFormat.getDateTimeInstance().format(Date(file.detectedAt))}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(12.dp))
-            // The button row swaps shape per-filter:
-            //  - Pending  → [ Ignore ] [ Process ]   (the daily decision)
-            //  - Processed/Ignored → [ Forget ] [ Reprocess ]  (revisit a past
-            //    decision; Reprocess just resets the row to PENDING so the
-            //    user can re-decide via the same Approve flow)
-            when (filter) {
-                InboxViewModel.Filter.PENDING -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onReject, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Outlined.Close, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.inbox_ignore))
-                    }
-                    Button(onClick = onApprove, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Outlined.Check, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.inbox_process))
-                    }
-                }
-                InboxViewModel.Filter.PROCESSED, InboxViewModel.Filter.IGNORED ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onForget, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Outlined.Delete, null)
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.inbox_forget))
-                        }
-                        Button(onClick = onReprocess, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Outlined.Refresh, null)
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.inbox_reprocess))
-                        }
-                    }
+            IconButton(onClick = onForget) {
+                Icon(
+                    Icons.Outlined.Delete,
+                    contentDescription = stringResource(R.string.inbox_forget),
+                )
             }
         }
+    }
+}
+
+/** Ignored items keep both Reprocess + Forget — the on-disk file still
+ *  exists (we don't touch a file on Ignore), so Reprocess is a real action. */
+@Composable
+private fun IgnoredCard(
+    item: InboxViewModel.InboxItem,
+    onReprocess: () -> Unit,
+    onForget: () -> Unit,
+) {
+    val file = item.file
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                file.name,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                fontFamily = FontFamily.Monospace,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onForget, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.Delete, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.inbox_forget))
+                }
+                Button(onClick = onReprocess, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.Refresh, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.inbox_reprocess))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RenameLine(target: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            Icons.AutoMirrored.Outlined.ArrowForward,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            target,
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

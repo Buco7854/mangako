@@ -17,6 +17,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
@@ -28,7 +29,11 @@ import java.util.Base64
 
 /**
  * Thin wrapper around the LANraragi HTTP API. We only use the upload endpoint
- * (`/api/archives/upload`) and let the server settle the archive ID & dedup.
+ * (`PUT /api/archives/upload`) and let the server settle the archive ID & dedup.
+ *
+ * The route is PUT, not POST — that mismatch is what was causing the 404s
+ * users were hitting; LANraragi's openapi.yaml registers the operation under
+ * the PUT verb and Mojolicious only matches the verb the spec declares.
  *
  * Auth: `Authorization: Bearer <base64(apiKey)>` per LANraragi docs. We
  * explicitly tell Ktor's logger to redact that header so the key never reaches
@@ -51,10 +56,14 @@ class LanraragiClient(
     )
 
     /**
-     * POST multipart upload of [file]. [uploadAs] is the filename the server
+     * PUT multipart upload of [file]. [uploadAs] is the filename the server
      * records; we strip path separators and control chars before putting it in
      * `Content-Disposition` so a misconfigured pipeline can't produce a
      * traversal-looking filename.
+     *
+     * `submitFormWithBinaryData` defaults to POST; we override the verb on
+     * the request block since LANraragi's spec registers this operation as
+     * PUT and Mojolicious refuses other verbs with a 404.
      */
     suspend fun uploadArchive(file: File, uploadAs: String): Result<UploadResponse> {
         require(file.exists()) { "File does not exist: ${file.path}" }
@@ -77,7 +86,9 @@ class LanraragiClient(
                     )
                     append("title", safeName.removeSuffix(".cbz"))
                 },
-            )
+            ) {
+                method = HttpMethod.Put
+            }
             when (response.status) {
                 HttpStatusCode.OK -> Result.success(response.body<UploadResponse>())
                 else -> Result.failure(

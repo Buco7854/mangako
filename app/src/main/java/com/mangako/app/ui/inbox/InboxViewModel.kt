@@ -8,6 +8,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.mangako.app.data.history.HistoryRepository
 import com.mangako.app.data.pending.PendingFile
 import com.mangako.app.data.pending.PendingRepository
 import com.mangako.app.data.pending.PendingStatus
@@ -36,6 +37,7 @@ class InboxViewModel @Inject constructor(
     private val pendingRepo: PendingRepository,
     settingsRepo: SettingsRepository,
     pipelineRepo: PipelineRepository,
+    historyRepo: HistoryRepository,
 ) : ViewModel() {
 
     /**
@@ -67,11 +69,20 @@ class InboxViewModel @Inject constructor(
     data class InboxItem(
         val file: PendingFile,
         /**
-         * What the renaming pipeline would currently produce for this file's
-         * filename. Empty if the pipeline is empty, in which case we fall back
-         * to the original name.
+         * Dry-run preview of what the renaming pipeline would CURRENTLY
+         * produce for this file's name. Used by the Pending view as a hint
+         * about what 'Process' will do — meaningful only when the pipeline
+         * could still actually run against the file.
          */
         val previewedFinal: String,
+        /**
+         * The final filename Mangako actually uploaded for this file, taken
+         * from the audit trail. Populated for PROCESSED items via a join on
+         * (originalName) against the History table — null when no history
+         * record matches (rare; usually means the upload failed or the row
+         * predates the history join landing).
+         */
+        val recordedFinal: String? = null,
     )
 
     data class UiState(
@@ -90,11 +101,27 @@ class InboxViewModel @Inject constructor(
         pendingRepo.observeCounts(),
         settingsRepo.flow,
         pipelineRepo.flow,
-        filter,
-    ) { items, statusCounts, settings, config, currentFilter ->
+        // Used as the join source for PROCESSED items' recordedFinal name.
+        // observe(limit) covers ~200 most recent runs which is plenty given
+        // MaintenanceWorker prunes Pending rows after 7 days anyway.
+        historyRepo.observe(),
+    ) { items, statusCounts, settings, config, history ->
+        // Most recent history record per originalName wins. Two files with
+        // the same name → the more recent processing of either gets the
+        // join, which is the right tie-break for 'most relevant' display.
+        val finalByName: Map<String, String> = history.groupBy { it.originalName }
+            .mapValues { (_, recs) -> recs.maxByOrNull { it.createdAt }?.finalName.orEmpty() }
+            .filterValues { it.isNotEmpty() }
+
         UiState(
-            filter = currentFilter,
-            items = items.map { p -> InboxItem(file = p, previewedFinal = previewRename(config, p.name)) },
+            filter = filter.value,
+            items = items.map { p ->
+                InboxItem(
+                    file = p,
+                    previewedFinal = previewRename(config, p.name),
+                    recordedFinal = finalByName[p.name],
+                )
+            },
             counts = Filter.values().associateWith { f ->
                 f.statuses.sumOf { statusCounts[it] ?: 0 }
             },

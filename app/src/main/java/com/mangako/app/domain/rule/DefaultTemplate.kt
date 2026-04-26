@@ -224,31 +224,49 @@ object DefaultTemplate {
             //     earlier rules' spaces collapse cleanly.
             add(Rule.CleanWhitespace(id = id(), trim = true))
 
-            // 12. Sync ComicInfo.xml with what we just produced — same
-            //     shape as the original fix_comicinfo_title +
-            //     remove_comicinfo_series scripts. Without the <Title>
-            //     write LANraragi's auto-extraction keeps showing the
-            //     upstream <Title> Mihon embedded (e.g. 'Chapter 39');
-            //     without the <Series> clear LANraragi groups uploads by
-            //     Mihon's per-manga <Series> rather than letting the user
-            //     organise them themselves.
+            // 12. Sync ComicInfo.xml — same shape as the original
+            //     fix_comicinfo_title + remove_comicinfo_series scripts.
+            //     Without the <Title> write LANraragi's auto-extraction
+            //     keeps showing the upstream <Title> Mihon embedded
+            //     (e.g. 'Chapter 39'); without the <Series> clear
+            //     LANraragi groups uploads by Mihon's per-manga <Series>
+            //     rather than letting the user organise them themselves.
             //
-            //     %__filename_title__% is the renamed filename with all
-            //     [Artist] / [Language] / [Manhwa] / (event) bracket tags
-            //     stripped — i.e. "Series Ch 39" rather than the full
-            //     "[Author] Series Ch 39 [English] [Manhwa].cbz". The
-            //     filename itself keeps its decorations for archival /
-            //     dedup; ComicInfo just gets the human title that LANraragi
-            //     surfaces in lists. Users can edit this rule to write
-            //     additional fields, or delete it entirely if they prefer
-            //     ComicInfo untouched.
+            //     The Title we write is the human one we just produced
+            //     in the filename via the earlier title-fix + manhwa
+            //     formatting steps — i.e. "%series%" for normal manga
+            //     and "%series% Ch %number%" for manhwa — rather than
+            //     the bracket-decorated archive filename. Users can edit
+            //     this rule to write additional fields, or delete it
+            //     entirely if they prefer ComicInfo untouched.
             add(
-                Rule.WriteComicInfo(
+                Rule.ConditionalFormat(
                     id = id(),
-                    label = "Sync ComicInfo with filename",
-                    fields = mapOf(
-                        "Title" to "%__filename_title__%",
-                        "Series" to "",
+                    label = "Sync ComicInfo with title",
+                    condition = Condition(
+                        variable = "genre",
+                        op = Condition.Op.CONTAINS,
+                        value = "Manhwa",
+                    ),
+                    thenRules = listOf(
+                        Rule.WriteComicInfo(
+                            id = id(),
+                            label = "Title = series Ch number (manhwa)",
+                            fields = mapOf(
+                                "Title" to "%series% Ch %number%",
+                                "Series" to "",
+                            ),
+                        ),
+                    ),
+                    elseRules = listOf(
+                        Rule.WriteComicInfo(
+                            id = id(),
+                            label = "Title = series",
+                            fields = mapOf(
+                                "Title" to "%series%",
+                                "Series" to "",
+                            ),
+                        ),
                     ),
                 ),
             )

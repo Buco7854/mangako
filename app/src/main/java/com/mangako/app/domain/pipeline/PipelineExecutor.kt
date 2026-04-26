@@ -48,18 +48,14 @@ class PipelineExecutor(
 
     private fun runAtDepth(config: PipelineConfig, input: Input, depth: Int, baseIndex: Int): Output {
         val steps = mutableListOf<AuditStep>()
-        // "__filename__" / "__filename_stem__" / "__filename_title__" are
-        // reserved variables.
-        //   - stem  = working filename minus a trailing `.cbz`.
-        //   - title = stem with [...] and (...) tag-style brackets stripped
-        //             and whitespace tidied. Lets users write a clean
-        //             ComicInfo <Title> ("Series Ch 39") instead of the
-        //             full bracket-decorated filename ("[Author] Series
-        //             Ch 39 [English] [Manhwa]").
+        // "__filename__" / "__filename_stem__" are reserved variables. Stem
+        // is the working filename minus a trailing `.cbz` so users can write
+        // it into ComicInfo's <Title> without the extension showing up in
+        // the LANraragi UI. Rules can inspect either in conditions or
+        // interpolate them via %tokens%.
         val vars = LinkedHashMap<String, String>(input.metadata).apply {
             put("__filename__", input.originalFilename)
             put("__filename_stem__", input.originalFilename.removeSuffix(".cbz"))
-            put("__filename_title__", filenameTitle(input.originalFilename))
         }
         var current = input.originalFilename
         var idx = baseIndex
@@ -71,7 +67,6 @@ class PipelineExecutor(
                 current = res.after
                 vars["__filename__"] = current
                 vars["__filename_stem__"] = current.removeSuffix(".cbz")
-                vars["__filename_title__"] = filenameTitle(current)
                 vars += res.variableUpdates
             }
             // Side-effect: ComicInfo writes accumulate across the run; later
@@ -336,19 +331,6 @@ class PipelineExecutor(
     companion object {
         const val DEFAULT_RULE_TIMEOUT_MS = 1_000L
         private val TOKEN = Regex("%([a-zA-Z_][a-zA-Z0-9_]*)%")
-
-        // Drops the ".cbz" extension and any [foo] / (foo) bracketed
-        // segments, then collapses runs of whitespace and trims. Used by
-        // the "%__filename_title__%" reserved variable so a default
-        // ComicInfo write produces "Series Ch 39" rather than
-        // "[Artist] Series Ch 39 [English] [Manhwa]".
-        private val BRACKETS = Regex("\\[[^\\[\\]]*\\]|\\([^()]*\\)")
-        private val WHITESPACE = Regex("\\s{2,}")
-        internal fun filenameTitle(name: String): String =
-            name.removeSuffix(".cbz")
-                .replace(BRACKETS, " ")
-                .replace(WHITESPACE, " ")
-                .trim()
     }
 }
 

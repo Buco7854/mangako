@@ -209,23 +209,44 @@ class PipelineExecutorTest {
         assertEquals("My Series", out.comicInfoUpdates["Series"])
     }
 
-    @Test fun `WriteComicInfo with __filename_title__ strips bracket tags from the title`() {
-        // Mirrors the default template — the renamed filename keeps its
-        // bracket decorations for archival, but ComicInfo's <Title>
-        // gets the clean "Series Ch 39" form.
+    @Test fun `WriteComicInfo inside a conditional picks the right title branch`() {
+        // Mirrors the default template's manhwa-aware ComicInfo sync.
         val cfg = PipelineConfig(
             rules = listOf(
-                Rule.WriteComicInfo(
-                    id = "wci",
-                    fields = mapOf("Title" to "%__filename_title__%"),
+                Rule.ConditionalFormat(
+                    id = "c",
+                    condition = Condition("genre", Condition.Op.CONTAINS, "Manhwa"),
+                    thenRules = listOf(
+                        Rule.WriteComicInfo(
+                            id = "wci-m",
+                            fields = mapOf("Title" to "%series% Ch %number%"),
+                        ),
+                    ),
+                    elseRules = listOf(
+                        Rule.WriteComicInfo(
+                            id = "wci",
+                            fields = mapOf("Title" to "%series%"),
+                        ),
+                    ),
                 ),
             ),
         )
-        val out = executor.run(
+        val manhwa = executor.run(
             cfg,
-            PipelineExecutor.Input("[Author] Series Ch 39 [English] [Manhwa].cbz"),
+            PipelineExecutor.Input(
+                "x.cbz",
+                metadata = mapOf("series" to "My Series", "number" to "39", "genre" to "Manhwa; Action"),
+            ),
         )
-        assertEquals("Series Ch 39", out.comicInfoUpdates["Title"])
+        val manga = executor.run(
+            cfg,
+            PipelineExecutor.Input(
+                "x.cbz",
+                metadata = mapOf("series" to "My Series", "number" to "1", "genre" to "Action"),
+            ),
+        )
+        assertEquals("My Series Ch 39", manhwa.comicInfoUpdates["Title"])
+        assertEquals("My Series", manga.comicInfoUpdates["Title"])
     }
 
     @Test fun `clean whitespace collapses repeated spaces and trims`() {

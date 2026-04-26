@@ -587,10 +587,12 @@ private fun newRuleOfKind(kind: RuleKind): Rule {
         RuleKind.WriteComicInfo -> Rule.WriteComicInfo(
             id = id,
             label = "Write to ComicInfo.xml",
-            // Default to the bracket-stripped filename so LANraragi shows
-            // a clean "Series Ch 39" rather than the bracket-decorated
-            // archive filename.
-            fields = mapOf("Title" to "%__filename_title__%"),
+            // Default to the ComicInfo <Series> so LANraragi shows a
+            // clean human title ("My Series") rather than the
+            // bracket-decorated archive filename. Users can swap to
+            // %series% Ch %number% for chapter-based manhwa, or any
+            // other variable, from the editor.
+            fields = mapOf("Title" to "%series%"),
         )
         RuleKind.Append -> Rule.StringAppend(id = id, text = "")
         RuleKind.Prepend -> Rule.StringPrepend(id = id, text = "")

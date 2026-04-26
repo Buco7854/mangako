@@ -334,6 +334,54 @@ class PipelineExecutorTest {
         assertEquals("[Artist] Title [English].cbz", out.finalFilename)
     }
 
+    @Test fun `default template preserves trailing tags from the detected filename`() {
+        // [Decensored] / [Color] / [v2] etc. live after the language
+        // bracket on the source filename — the pipeline should pull
+        // them into %extra_tags% and re-emit them after the rebuilt
+        // [Language] tag, but keep ComicInfo's <Title> clean.
+        val cfg = DefaultTemplate.lanraragiStandard()
+        val out = executor.run(
+            cfg,
+            PipelineExecutor.Input(
+                originalFilename = "[Artist] Title [English] [Decensored] [v2].cbz",
+                metadata = mapOf(
+                    "title" to "Title",
+                    "series" to "Series",
+                    "writer" to "Artist",
+                    "language" to "English",
+                ),
+            ),
+        )
+        assertEquals("[Artist] Title [English] [Decensored] [v2].cbz", out.finalFilename)
+        // ComicInfo Title gets only the human title — none of the trailing tags.
+        assertEquals("Title", out.comicInfoUpdates["Title"])
+    }
+
+    @Test fun `default template dedupes Manhwa when source already has the tag`() {
+        // Realistic Mihon manhwa flow: source filename already
+        // carries [Manhwa] (the user previously processed and is
+        // reprocessing), and ComicInfo has a generic chapter title
+        // that step 8 promotes to series. The manhwa step must not
+        // duplicate the [Manhwa] tag in %extra_tags%.
+        val cfg = DefaultTemplate.lanraragiStandard()
+        val out = executor.run(
+            cfg,
+            PipelineExecutor.Input(
+                originalFilename = "[Artist] Series Ch 1 [English] [Manhwa].cbz",
+                metadata = mapOf(
+                    "title" to "Chapter 1",
+                    "series" to "Series",
+                    "writer" to "Artist",
+                    "number" to "1",
+                    "genre" to "Manhwa",
+                    "language" to "English",
+                ),
+            ),
+        )
+        assertEquals("[Artist] Series Ch 1 [English] [Manhwa].cbz", out.finalFilename)
+        assertEquals("Series Ch 1", out.comicInfoUpdates["Title"])
+    }
+
     @Test fun `default template handles a non-manhwa upload`() {
         // No "Manhwa" in genre → no chapter token in the title and no
         // [Manhwa] suffix on the filename.

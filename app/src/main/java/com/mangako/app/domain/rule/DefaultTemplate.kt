@@ -153,11 +153,50 @@ object DefaultTemplate {
                 )
             )
 
+            // 6. Initialise %extra_tags% to empty so the build
+            //    template always has a defined value. ExtractRegex
+            //    below skips when both the capture and the default
+            //    value are blank (its "no match and no default"
+            //    short-circuit), and we don't want the literal
+            //    "%extra_tags%" leaking into the filename for files
+            //    without trailing tags.
+            add(
+                Rule.SetVariable(
+                    id = id(),
+                    label = "Initialise %extra_tags%",
+                    target = "extra_tags",
+                    value = "",
+                )
+            )
+
+            // 7. Pull any trailing tags after the language bracket
+            //    out of the detected filename — "[Decensored]",
+            //    "[Color]", "[v2]" etc. — into %extra_tags%. They
+            //    don't belong on ComicInfo's <Title>, but they do
+            //    carry useful release info that should round-trip
+            //    onto the canonical filename. Captures everything
+            //    between "[<lang>]" and ".cbz" verbatim, including
+            //    any leading space, so the build template can
+            //    interpolate it as-is.
+            add(
+                Rule.ExtractRegex(
+                    id = id(),
+                    label = "Extract trailing tags from filename",
+                    source = "__filename__",
+                    target = "extra_tags",
+                    pattern = "\\[(?:$LANG_ALT)\\](.*)\\.cbz$",
+                    group = 1,
+                    ignoreCase = true,
+                    onlyIfEmpty = false,
+                    defaultValue = "",
+                )
+            )
+
             // ─────────────────────────────────────────────
             // Phase 2: Compute the human %title%
             // ─────────────────────────────────────────────
 
-            // 6. Generic title fix: when Mihon embeds the chapter
+            // 8. Generic title fix: when Mihon embeds the chapter
             //    label as <Title> (e.g. "Chapter 39", "Ch.3"), promote
             //    %series% into %title%. Mirrors fix_comicinfo_title in
             //    mihon.sh.
@@ -182,7 +221,7 @@ object DefaultTemplate {
                 )
             )
 
-            // 7. Manhwa: append " Ch %number%" so the title carries
+            // 9. Manhwa: append " Ch %number%" so the title carries
             //    chapter granularity ("My Series Ch 39"). The filename
             //    template below picks up %title% verbatim, so this is
             //    the single place that controls how chapter info
@@ -211,33 +250,40 @@ object DefaultTemplate {
             // Phase 3: Helper variables for the template
             // ─────────────────────────────────────────────
 
-            // 8. Manhwa suffix tag — " [Manhwa]" for manhwa, blank
-            //    otherwise. Pulled out as its own variable so the
-            //    filename template stays a single string with no
-            //    conditional logic.
+            // 10. Manhwa: ensure "[Manhwa]" lives in %extra_tags%
+            //    when genre says manhwa AND it isn't there already.
+            //    %extra_tags% is the same bag of trailing tags the
+            //    detection step extracted from the filename, so by
+            //    routing the manhwa decision through it we
+            //    automatically dedupe a [Manhwa] that was already
+            //    on the source filename.
             add(
                 Rule.ConditionalFormat(
                     id = id(),
-                    label = "Compute %manhwa_suffix%",
+                    label = "Ensure [Manhwa] in %extra_tags%",
                     condition = Condition(
                         variable = "genre",
                         op = Condition.Op.CONTAINS,
                         value = "Manhwa",
                     ),
                     thenRules = listOf(
-                        Rule.SetVariable(
+                        Rule.ConditionalFormat(
                             id = id(),
-                            label = "[Manhwa] tag on",
-                            target = "manhwa_suffix",
-                            value = " [Manhwa]",
-                        ),
-                    ),
-                    elseRules = listOf(
-                        Rule.SetVariable(
-                            id = id(),
-                            label = "[Manhwa] tag off",
-                            target = "manhwa_suffix",
-                            value = "",
+                            label = "[Manhwa] not yet in trailing tags",
+                            condition = Condition(
+                                variable = "extra_tags",
+                                op = Condition.Op.NOT_CONTAINS,
+                                value = "[Manhwa]",
+                                ignoreCase = true,
+                            ),
+                            thenRules = listOf(
+                                Rule.SetVariable(
+                                    id = id(),
+                                    label = "Append [Manhwa] to %extra_tags%",
+                                    target = "extra_tags",
+                                    value = "%extra_tags% [Manhwa]",
+                                ),
+                            ),
                         ),
                     ),
                 )
@@ -247,17 +293,22 @@ object DefaultTemplate {
             // Phase 4: Build the filename
             // ─────────────────────────────────────────────
 
-            // 9. Compose the final filename in one place. Setting
+            // 11. Compose the final filename in one place. Setting
             //    %__filename__% mutates the working filename string,
             //    so this single template is what becomes the upload
             //    name. Everything before this step prepares the
             //    variables it interpolates.
+            //
+            //    %extra_tags% already includes its own leading
+            //    space (captured verbatim from the detected
+            //    filename, or prepended by the manhwa step above),
+            //    so the template doesn't add one before it.
             add(
                 Rule.SetVariable(
                     id = id(),
                     label = "Build filename",
                     target = "__filename__",
-                    value = "%event_prefix%[%writer%] %title% [%language%]%manhwa_suffix%.cbz",
+                    value = "%event_prefix%[%writer%] %title% [%language%]%extra_tags%.cbz",
                 )
             )
 
@@ -265,7 +316,7 @@ object DefaultTemplate {
             // Phase 5: Hygiene
             // ─────────────────────────────────────────────
 
-            // 10. Strip Windows-unsafe filename chars so LANraragi's
+            // 12. Strip Windows-unsafe filename chars so LANraragi's
             //     client-side dedup never chokes on a stray colon.
             add(
                 Rule.RegexReplace(
@@ -276,17 +327,17 @@ object DefaultTemplate {
                 )
             )
 
-            // 11. Collapse runs of whitespace + trim. Catches the empty
-            //     " [Manhwa]" / event-less cases where the template
-            //     leaves a double space, plus any leading whitespace
-            //     when there's no event prefix.
+            // 13. Collapse runs of whitespace + trim. Catches the empty
+            //     event-prefix case where the template leaves a leading
+            //     space, plus any double spaces from concatenating
+            //     %extra_tags%.
             add(Rule.CleanWhitespace(id = id(), trim = true))
 
             // ─────────────────────────────────────────────
             // Phase 6: Sync ComicInfo
             // ─────────────────────────────────────────────
 
-            // 12. Write %title% into ComicInfo's <Title> and clear
+            // 14. Write %title% into ComicInfo's <Title> and clear
             //     <Series>. Without the Title write, LANraragi's
             //     auto-extraction keeps showing Mihon's "Chapter 39";
             //     without the Series clear it groups uploads by

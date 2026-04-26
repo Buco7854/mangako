@@ -224,17 +224,24 @@ object DefaultTemplate {
             //     earlier rules' spaces collapse cleanly.
             add(Rule.CleanWhitespace(id = id(), trim = true))
 
-            // 12. Mirror the renamed filename into ComicInfo.xml's <Title> so
-            //     LANraragi (and any other reader that consults ComicInfo)
-            //     shows the same title as the on-disk filename. Without this
-            //     LANraragi's auto-extraction will keep showing whatever
-            //     <Title> Mihon embedded (e.g. 'Chapter 39'). Users can edit
-            //     this rule to write additional ComicInfo fields if they want.
+            // 12. Mirror the renamed filename into ComicInfo.xml's <Title>
+            //     and clear <Series> — same shape as the original
+            //     fix_comicinfo_title + remove_comicinfo_series scripts. Without
+            //     the Title write LANraragi's auto-extraction keeps showing the
+            //     upstream <Title> Mihon embedded (e.g. 'Chapter 39'); without
+            //     the Series clear LANraragi groups uploads by Mihon's per-
+            //     manga <Series> rather than letting the user organise them
+            //     themselves. Users can edit this rule to write additional
+            //     fields, or delete it entirely if they prefer ComicInfo
+            //     untouched.
             add(
                 Rule.WriteComicInfo(
                     id = id(),
-                    label = "Sync <Title> from filename",
-                    fields = mapOf("Title" to "%__filename_stem__%"),
+                    label = "Sync ComicInfo with filename",
+                    fields = mapOf(
+                        "Title" to "%__filename_stem__%",
+                        "Series" to "",
+                    ),
                 ),
             )
         },

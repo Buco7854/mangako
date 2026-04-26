@@ -37,6 +37,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -142,16 +144,30 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
         bottomBar = {
             val showBar = destinations.any { it.route == currentRoute }
             if (showBar) {
+                val focus = LocalFocusManager.current
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
                     tonalElevation = 0.dp,
                 ) {
                     destinations.forEach { dest ->
+                        val isSelected = backStack?.destination?.hierarchy?.any { it.route == dest.route } == true
                         NavigationBarItem(
-                            selected = backStack?.destination?.hierarchy?.any { it.route == dest.route } == true,
+                            selected = isSelected,
                             onClick = {
+                                // Clear focus on every tab tap. Without this,
+                                // tapping the bar while a TextField (e.g. the
+                                // Settings URL field) was focused consumed the
+                                // first tap as 'dismiss the IME / blur', and
+                                // navigation only happened on the second tap.
+                                focus.clearFocus()
+                                // Reselecting the current tab is a no-op so we
+                                // don't churn the back stack with redundant
+                                // launchSingleTop entries.
+                                if (isSelected) return@NavigationBarItem
                                 nav.navigate(dest.route) {
-                                    popUpTo(nav.graph.startDestinationId) { saveState = true }
+                                    popUpTo(nav.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
                                     launchSingleTop = true
                                     restoreState = true
                                 }

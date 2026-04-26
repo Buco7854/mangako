@@ -15,7 +15,8 @@ fun Rule.humanTitle(): String = label?.takeIf { it.isNotBlank() } ?: when (this)
     is Rule.ExtractXmlMetadata -> "Read details from ComicInfo.xml"
     is Rule.ExtractRegex -> "Pull a value out of %$source%"
     is Rule.RegexReplace -> "Find and replace text"
-    is Rule.RegexReplaceMany -> "Find and replace (group)"
+    is Rule.Group -> "Group"
+    is Rule.WriteComicInfo -> "Write to ComicInfo.xml"
     is Rule.StringAppend -> "Add text to the end"
     is Rule.StringPrepend -> "Add text to the start"
     is Rule.TagRelocator -> when (position) {
@@ -24,7 +25,6 @@ fun Rule.humanTitle(): String = label?.takeIf { it.isNotBlank() } ?: when (this)
     }
     is Rule.ConditionalFormat -> "If/else"
     is Rule.CleanWhitespace -> "Tidy whitespace"
-    is Rule.SectionHeader -> label ?: "Section"
 }
 
 fun Rule.humanSubtitle(): String = when (this) {
@@ -39,10 +39,15 @@ fun Rule.humanSubtitle(): String = when (this) {
         val rep = replacement.ifBlank { "(empty)" }
         "Replace /$pat/ with \"$rep\"."
     }
-    is Rule.RegexReplaceMany -> when (replacements.size) {
-        0 -> "No replacements yet — tap to add some."
-        1 -> "1 find-and-replace pair."
-        else -> "${replacements.size} find-and-replace pairs applied in order."
+    is Rule.Group -> when (rules.size) {
+        0 -> "Empty group — tap to add nested rules."
+        1 -> "Runs 1 nested rule."
+        else -> "Runs ${rules.size} nested rules in order."
+    }
+    is Rule.WriteComicInfo -> when (fields.size) {
+        0 -> "No fields configured yet — tap to set Title, Series, etc."
+        1 -> "Sets <${fields.keys.first()}> in ComicInfo.xml after the pipeline."
+        else -> "Sets ${fields.size} ComicInfo.xml fields after the pipeline."
     }
     is Rule.StringAppend -> if (text.isBlank()) "Append nothing yet." else "Append \"$text\" to the filename."
     is Rule.StringPrepend -> if (text.isBlank()) "Prepend nothing yet." else "Prepend \"$text\" to the filename."
@@ -57,7 +62,6 @@ fun Rule.humanSubtitle(): String = when (this) {
     is Rule.CleanWhitespace ->
         if (trim) "Collapse repeated spaces and trim the ends."
         else "Collapse repeated spaces."
-    is Rule.SectionHeader -> "Visual divider — purely cosmetic."
 }
 
 fun Condition.humanize(): String {
@@ -97,13 +101,13 @@ private fun String.humanizeRuleType(): String = when (this) {
     "ExtractXmlMetadata" -> "Read ComicInfo.xml"
     "ExtractRegex" -> "Extract value"
     "RegexReplace" -> "Find and replace"
-    "RegexReplaceMany" -> "Find and replace (group)"
+    "Group" -> "Group"
+    "WriteComicInfo" -> "Write to ComicInfo.xml"
     "StringAppend" -> "Append text"
     "StringPrepend" -> "Prepend text"
     "TagRelocator" -> "Reposition tag"
     "ConditionalFormat" -> "If/else"
     "CleanWhitespace" -> "Tidy whitespace"
-    "SectionHeader" -> "Section"
     else -> this
 }
 

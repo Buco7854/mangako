@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -148,10 +149,17 @@ fun AddRuleSheet(onDismiss: () -> Unit, onPick: (RuleKind) -> Unit) {
 @Composable
 private fun RuleKindTile(kind: RuleKind, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        // Fixed height + an internal Column with weight on the blurb keeps
+        // every tile in the grid the same size regardless of how long the
+        // label or blurb wraps. Without it the row heights staggered and
+        // the picker looked messy.
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(150.dp)
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-        Column(Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
             Icon(
                 imageVector = kind.icon,
                 contentDescription = null,
@@ -163,12 +171,17 @@ private fun RuleKindTile(kind: RuleKind, onClick: () -> Unit) {
                 stringResource(kind.labelRes),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(2.dp))
             Text(
                 stringResource(kind.blurbRes),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
         }
     }

@@ -69,8 +69,13 @@
     <string name="editor_extract_default">Default (if no match)</string>
     <string name="editor_extract_only_if_empty">Only write if %%%1$s%% is empty</string>
     <string name="editor_cleanws_trim">Also trim leading/trailing whitespace</string>
-    <string name="editor_regex_many_help">Each row is one find/replace pair. They run top to bottom against the working filename.</string>
-    <string name="editor_regex_many_add">Add a pair</string>
+    <string name="editor_group_help">Nested rules run top-to-bottom against the working filename, just like the top-level pipeline.</string>
+    <string name="editor_group_empty">No rules in this group yet — tap below to add one.</string>
+    <string name="editor_group_add">Add a rule</string>
+    <string name="editor_writecomicinfo_help">Each row sets one ComicInfo.xml element. Use %var% to interpolate pipeline variables, e.g. %__filename_stem__% for the renamed filename without .cbz.</string>
+    <string name="editor_writecomicinfo_field">Element name</string>
+    <string name="editor_writecomicinfo_value">Value template</string>
+    <string name="editor_writecomicinfo_add">Add a field</string>
 
     <!-- Add rule / Import dialogs -->
     <string name="dialog_add_rule_title">Add rule</string>
@@ -87,8 +92,10 @@
     <string name="rule_kind_extract_regex_blurb">Pull a value out of one variable into another</string>
     <string name="rule_kind_regex">Find &amp; replace</string>
     <string name="rule_kind_regex_blurb">Match a pattern and rewrite it</string>
-    <string name="rule_kind_regex_many">Find &amp; replace (group)</string>
-    <string name="rule_kind_regex_many_blurb">Apply many find/replace pairs in a single step</string>
+    <string name="rule_kind_group">Group</string>
+    <string name="rule_kind_group_blurb">Cluster nested rules under one label — purely organisational</string>
+    <string name="rule_kind_writecomicinfo">Write to ComicInfo.xml</string>
+    <string name="rule_kind_writecomicinfo_blurb">Set Title, Series, etc. inside the .cbz before upload</string>
     <string name="rule_kind_append">Append text</string>
     <string name="rule_kind_append_blurb">Add text to the end of the filename</string>
     <string name="rule_kind_prepend">Prepend text</string>
@@ -99,9 +106,6 @@
     <string name="rule_kind_conditional_blurb">Run different rules depending on a condition</string>
     <string name="rule_kind_cleanws">Tidy whitespace</string>
     <string name="rule_kind_cleanws_blurb">Collapse double spaces and trim the ends</string>
-    <string name="rule_kind_section">Section header</string>
-    <string name="rule_kind_section_blurb">Visual divider — purely cosmetic, useful for grouping related rules</string>
-    <string name="pipeline_section_default">Section</string>
 
     <!-- Rule overflow menu -->
     <string name="rule_move_up">Move up</string>

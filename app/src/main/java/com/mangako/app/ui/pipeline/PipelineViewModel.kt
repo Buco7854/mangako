@@ -9,7 +9,8 @@ import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.ContentPasteSearch
-import androidx.compose.material.icons.outlined.ShortText
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.SwapHoriz
@@ -226,7 +227,12 @@ class PipelineViewModel @Inject constructor(
                 id = id, source = "summary", target = "language", pattern = "",
             )
             RuleKind.Regex -> Rule.RegexReplace(id = id, pattern = "", replacement = "")
-            RuleKind.RegexMany -> Rule.RegexReplaceMany(id = id, replacements = emptyList())
+            RuleKind.Group -> Rule.Group(id = id, label = "Group", rules = emptyList())
+            RuleKind.WriteComicInfo -> Rule.WriteComicInfo(
+                id = id,
+                label = "Write to ComicInfo.xml",
+                fields = mapOf("Title" to "%__filename_stem__%"),
+            )
             RuleKind.Append -> Rule.StringAppend(id = id, text = "")
             RuleKind.Prepend -> Rule.StringPrepend(id = id, text = "")
             RuleKind.Relocator -> Rule.TagRelocator(id = id, pattern = "")
@@ -235,7 +241,6 @@ class PipelineViewModel @Inject constructor(
                 condition = Condition(variable = "genre", op = Condition.Op.CONTAINS, value = ""),
             )
             RuleKind.CleanWs -> Rule.CleanWhitespace(id = id)
-            RuleKind.SectionHeader -> Rule.SectionHeader(id = id, label = "Section")
         }
     }
 }
@@ -248,13 +253,13 @@ enum class RuleKind(
     ExtractXml(R.string.rule_kind_extract_xml, R.string.rule_kind_extract_xml_blurb, Icons.AutoMirrored.Outlined.Article),
     ExtractRegex(R.string.rule_kind_extract_regex, R.string.rule_kind_extract_regex_blurb, Icons.Outlined.ContentPasteSearch),
     Regex(R.string.rule_kind_regex, R.string.rule_kind_regex_blurb, Icons.Outlined.FindReplace),
-    RegexMany(R.string.rule_kind_regex_many, R.string.rule_kind_regex_many_blurb, Icons.AutoMirrored.Outlined.FormatListBulleted),
     Append(R.string.rule_kind_append, R.string.rule_kind_append_blurb, Icons.Outlined.FormatQuote),
     Prepend(R.string.rule_kind_prepend, R.string.rule_kind_prepend_blurb, Icons.Outlined.FormatQuote),
     Relocator(R.string.rule_kind_relocator, R.string.rule_kind_relocator_blurb, Icons.Outlined.SwapHoriz),
     Conditional(R.string.rule_kind_conditional, R.string.rule_kind_conditional_blurb, Icons.AutoMirrored.Outlined.CallSplit),
     CleanWs(R.string.rule_kind_cleanws, R.string.rule_kind_cleanws_blurb, Icons.Outlined.CleaningServices),
-    SectionHeader(R.string.rule_kind_section, R.string.rule_kind_section_blurb, Icons.Outlined.ShortText),
+    Group(R.string.rule_kind_group, R.string.rule_kind_group_blurb, Icons.Outlined.Folder),
+    WriteComicInfo(R.string.rule_kind_writecomicinfo, R.string.rule_kind_writecomicinfo_blurb, Icons.Outlined.Edit),
 }
 
 /** The visual identity shown in rule cards, the picker, and the audit log. */
@@ -262,12 +267,12 @@ fun Rule.icon(): ImageVector = when (this) {
     is Rule.ExtractXmlMetadata -> Icons.AutoMirrored.Outlined.Article
     is Rule.ExtractRegex -> Icons.Outlined.ContentPasteSearch
     is Rule.RegexReplace -> Icons.Outlined.FindReplace
-    is Rule.RegexReplaceMany -> Icons.AutoMirrored.Outlined.FormatListBulleted
+    is Rule.Group -> Icons.Outlined.Folder
+    is Rule.WriteComicInfo -> Icons.Outlined.Edit
     is Rule.StringAppend -> Icons.Outlined.FormatQuote
     is Rule.StringPrepend -> Icons.Outlined.FormatQuote
     is Rule.TagRelocator -> Icons.Outlined.SwapHoriz
     is Rule.ConditionalFormat -> Icons.AutoMirrored.Outlined.CallSplit
     is Rule.CleanWhitespace -> Icons.Outlined.CleaningServices
-    is Rule.SectionHeader -> Icons.Outlined.ShortText
 }
 

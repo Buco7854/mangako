@@ -103,29 +103,60 @@ sealed class Rule {
     }
 
     /**
-     * A list of (pattern, replacement) regex substitutions applied in order to
-     * the working filename. Conceptually identical to N consecutive [RegexReplace]
-     * rules, but kept as a single user-visible step so a logically-grouped batch
-     * (e.g. "emoji flag → [Language] tag" mappings) doesn't fill up the pipeline
-     * list with N near-identical rows.
+     * Container of nested rules. Tap-to-edit opens an editor that lists the
+     * sub-rules and lets the user add / reorder / remove them — same shape
+     * as [ConditionalFormat]'s then/else sections but without the
+     * conditional gate. Useful for clustering N related steps under a
+     * label (e.g. 'Emoji flags → languages', 'Manhwa formatting') so the
+     * pipeline list doesn't sprawl.
+     *
+     * Execution: each sub-rule runs in order against the current
+     * filename + variables, and any side effects (variable updates,
+     * ComicInfo writes) bubble up to the parent.
      */
     @Serializable
-    @SerialName("regex_replace_many")
-    data class RegexReplaceMany(
+    @SerialName("group")
+    data class Group(
         override val id: String,
         override val enabled: Boolean = true,
         override val label: String? = null,
-        val replacements: List<Replacement> = emptyList(),
-        val ignoreCase: Boolean = false,
+        val rules: List<Rule> = emptyList(),
     ) : Rule() {
-        @Serializable
-        data class Replacement(val pattern: String, val replacement: String)
+        override fun displayName() = label ?: "Group"
+        override fun describe() = when (rules.size) {
+            0 -> "(empty group)"
+            1 -> "1 nested rule"
+            else -> "${rules.size} nested rules"
+        }
+        override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
+    }
 
-        override fun displayName() = label ?: "Find & replace (group)"
-        override fun describe() = when (replacements.size) {
-            0 -> "(no replacements yet)"
-            1 -> "1 replacement"
-            else -> "${replacements.size} replacements"
+    /**
+     * Writes (or overwrites) elements inside the archive's ComicInfo.xml
+     * after the pipeline runs. Each entry in [fields] is `<KeyName>` →
+     * value template; the template is `%var%`-interpolated against the
+     * pipeline variables, so e.g. `Title=%__filename_stem__%` will set
+     * `<Title>` to whatever the rename pipeline produced (without the
+     * `.cbz` extension).
+     *
+     * The rule itself records the requested writes as a side effect on
+     * the [PipelineExecutor.Output]; the actual file rewrite happens in
+     * [com.mangako.app.work.ProcessCbzWorker] after the pipeline
+     * finishes, so this rule has no effect on the working filename.
+     */
+    @Serializable
+    @SerialName("write_comicinfo")
+    data class WriteComicInfo(
+        override val id: String,
+        override val enabled: Boolean = true,
+        override val label: String? = null,
+        val fields: Map<String, String> = emptyMap(),
+    ) : Rule() {
+        override fun displayName() = label ?: "Write to ComicInfo.xml"
+        override fun describe() = when (fields.size) {
+            0 -> "(no fields configured)"
+            1 -> "Set <${fields.keys.first()}> in ComicInfo.xml"
+            else -> "Set ${fields.size} fields in ComicInfo.xml"
         }
         override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
     }
@@ -188,30 +219,6 @@ sealed class Rule {
     ) : Rule() {
         override fun displayName() = label ?: "Conditional"
         override fun describe() = "if ${condition.describe()} then ${thenRules.size} rule(s)"
-        override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
-    }
-
-    /**
-     * Visual divider with a label — purely a UI affordance for grouping
-     * adjacent rules under a heading (e.g. 'Emoji flags', 'Manhwa
-     * formatting'). The executor treats it as a no-op; the rule list
-     * renders it as a flat header row instead of a card.
-     *
-     * The `label` field on the base class is the heading text. We don't
-     * override displayName/describe with anything meaningful because the
-     * only place either is used is the rule editor and there isn't one
-     * for SectionHeader — tapping it goes straight to a label-rename
-     * affordance.
-     */
-    @Serializable
-    @SerialName("section_header")
-    data class SectionHeader(
-        override val id: String,
-        override val enabled: Boolean = true,
-        override val label: String? = null,
-    ) : Rule() {
-        override fun displayName() = label ?: "Section"
-        override fun describe() = "Visual divider — does nothing to the filename"
         override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
     }
 

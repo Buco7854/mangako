@@ -99,25 +99,26 @@ object DefaultTemplate {
             )
 
             // 6. Emoji flags → [Language]. Mirrors lrr-preprocess.sh clean_name().
-            //    Twelve pairs in one rule so this conceptual group doesn't fill
-            //    the pipeline list with twelve near-identical rows.
+            //    A Group keeps the twelve mappings as one user-visible step
+            //    in the pipeline list — tap it to see / edit the individual
+            //    RegexReplace sub-rules.
             add(
-                Rule.RegexReplaceMany(
+                Rule.Group(
                     id = id(),
                     label = "Emoji flags → [Language]",
-                    replacements = listOf(
-                        Rule.RegexReplaceMany.Replacement("🇺🇸|🇬🇧", "[English]"),
-                        Rule.RegexReplaceMany.Replacement("🇯🇵", "[Japanese]"),
-                        Rule.RegexReplaceMany.Replacement("🇰🇷", "[Korean]"),
-                        Rule.RegexReplaceMany.Replacement("🇨🇳|🇹🇼", "[Chinese]"),
-                        Rule.RegexReplaceMany.Replacement("🇫🇷", "[French]"),
-                        Rule.RegexReplaceMany.Replacement("🇪🇸", "[Spanish]"),
-                        Rule.RegexReplaceMany.Replacement("🇩🇪", "[German]"),
-                        Rule.RegexReplaceMany.Replacement("🇮🇹", "[Italian]"),
-                        Rule.RegexReplaceMany.Replacement("🇧🇷|🇵🇹", "[Portuguese]"),
-                        Rule.RegexReplaceMany.Replacement("🇷🇺", "[Russian]"),
-                        Rule.RegexReplaceMany.Replacement("🇹🇭", "[Thai]"),
-                        Rule.RegexReplaceMany.Replacement("🇻🇳", "[Vietnamese]"),
+                    rules = listOf(
+                        Rule.RegexReplace(id = id(), label = "🇺🇸/🇬🇧 → [English]", pattern = "🇺🇸|🇬🇧", replacement = "[English]"),
+                        Rule.RegexReplace(id = id(), label = "🇯🇵 → [Japanese]", pattern = "🇯🇵", replacement = "[Japanese]"),
+                        Rule.RegexReplace(id = id(), label = "🇰🇷 → [Korean]", pattern = "🇰🇷", replacement = "[Korean]"),
+                        Rule.RegexReplace(id = id(), label = "🇨🇳/🇹🇼 → [Chinese]", pattern = "🇨🇳|🇹🇼", replacement = "[Chinese]"),
+                        Rule.RegexReplace(id = id(), label = "🇫🇷 → [French]", pattern = "🇫🇷", replacement = "[French]"),
+                        Rule.RegexReplace(id = id(), label = "🇪🇸 → [Spanish]", pattern = "🇪🇸", replacement = "[Spanish]"),
+                        Rule.RegexReplace(id = id(), label = "🇩🇪 → [German]", pattern = "🇩🇪", replacement = "[German]"),
+                        Rule.RegexReplace(id = id(), label = "🇮🇹 → [Italian]", pattern = "🇮🇹", replacement = "[Italian]"),
+                        Rule.RegexReplace(id = id(), label = "🇧🇷/🇵🇹 → [Portuguese]", pattern = "🇧🇷|🇵🇹", replacement = "[Portuguese]"),
+                        Rule.RegexReplace(id = id(), label = "🇷🇺 → [Russian]", pattern = "🇷🇺", replacement = "[Russian]"),
+                        Rule.RegexReplace(id = id(), label = "🇹🇭 → [Thai]", pattern = "🇹🇭", replacement = "[Thai]"),
+                        Rule.RegexReplace(id = id(), label = "🇻🇳 → [Vietnamese]", pattern = "🇻🇳", replacement = "[Vietnamese]"),
                     ),
                 ),
             )
@@ -219,8 +220,23 @@ object DefaultTemplate {
                 )
             )
 
-            // 11. Collapse whitespace + trim. Must be last so earlier rules' spaces collapse cleanly.
+            // 11. Collapse whitespace + trim. Must be last filename mutation so
+            //     earlier rules' spaces collapse cleanly.
             add(Rule.CleanWhitespace(id = id(), trim = true))
+
+            // 12. Mirror the renamed filename into ComicInfo.xml's <Title> so
+            //     LANraragi (and any other reader that consults ComicInfo)
+            //     shows the same title as the on-disk filename. Without this
+            //     LANraragi's auto-extraction will keep showing whatever
+            //     <Title> Mihon embedded (e.g. 'Chapter 39'). Users can edit
+            //     this rule to write additional ComicInfo fields if they want.
+            add(
+                Rule.WriteComicInfo(
+                    id = id(),
+                    label = "Sync <Title> from filename",
+                    fields = mapOf("Title" to "%__filename_stem__%"),
+                ),
+            )
         },
     )
 }

@@ -92,19 +92,24 @@ class ProcessCbzWorker @AssistedInject constructor(
             )
             val finalName = ensureCbzSuffix(runOut.finalFilename)
 
-            // 4b. Rewrite ComicInfo.xml inside the cached copy so the
-            //     embedded <Title> matches the renamed filename. Without
-            //     this, LANraragi's auto-extraction (and any other reader)
-            //     keeps showing the upstream <Title> from Mihon (e.g.
-            //     'Chapter 39') even when the file on disk is named
-            //     correctly. Best-effort: a failure here doesn't block the
-            //     upload — LanraragiClient also calls the metadata API
-            //     after upload as a belt-and-suspenders fallback.
-            runCatching {
-                cbzProcessor.updateMetadata(
-                    cbz = localCopy,
-                    fieldsToSet = mapOf("Title" to finalName.removeSuffix(".cbz")),
-                )
+            // 4b. Apply any ComicInfo.xml writes the pipeline requested via
+            //     [Rule.WriteComicInfo]. The pipeline itself can't touch
+            //     the file (it only knows the filename string), so it
+            //     records the desired writes as a side effect on
+            //     PipelineExecutor.Output and we apply them here. Without
+            //     a WriteComicInfo rule in the pipeline, the file's
+            //     ComicInfo is left alone — LANraragi's auto-extraction
+            //     will then pick up the upstream <Title> from Mihon. The
+            //     LANraragi-side metadata API call inside LanraragiClient
+            //     stays as a fallback so the displayed title still tracks
+            //     the renamed filename even when ComicInfo isn't rewritten.
+            if (runOut.comicInfoUpdates.isNotEmpty()) {
+                runCatching {
+                    cbzProcessor.updateMetadata(
+                        cbz = localCopy,
+                        fieldsToSet = runOut.comicInfoUpdates,
+                    )
+                }
             }
 
             // 5. Upload.

@@ -166,15 +166,16 @@ class PipelineExecutorTest {
         assertTrue(out.steps.first().skipped)
     }
 
-    @Test fun `regex replace many applies all pairs in order`() {
+    @Test fun `group runs nested rules in order against the working filename`() {
         val cfg = PipelineConfig(
             rules = listOf(
-                Rule.RegexReplaceMany(
-                    id = "1",
-                    replacements = listOf(
-                        Rule.RegexReplaceMany.Replacement("🇺🇸|🇬🇧", "[English]"),
-                        Rule.RegexReplaceMany.Replacement("🇯🇵", "[Japanese]"),
-                        Rule.RegexReplaceMany.Replacement("\\s+\\.cbz$", ".cbz"),
+                Rule.Group(
+                    id = "g1",
+                    label = "Emoji flags → [Language]",
+                    rules = listOf(
+                        Rule.RegexReplace(id = "r1", pattern = "🇺🇸|🇬🇧", replacement = "[English]"),
+                        Rule.RegexReplace(id = "r2", pattern = "🇯🇵", replacement = "[Japanese]"),
+                        Rule.RegexReplace(id = "r3", pattern = "\\s+\\.cbz$", replacement = ".cbz"),
                     ),
                 ),
             ),
@@ -183,20 +184,29 @@ class PipelineExecutorTest {
         assertEquals("[Artist] Title [Japanese].cbz", out.finalFilename)
     }
 
-    @Test fun `regex replace many skips empty pattern entries`() {
+    @Test fun `WriteComicInfo records interpolated field updates as a side effect`() {
         val cfg = PipelineConfig(
             rules = listOf(
-                Rule.RegexReplaceMany(
-                    id = "1",
-                    replacements = listOf(
-                        Rule.RegexReplaceMany.Replacement("", "ignored"),
-                        Rule.RegexReplaceMany.Replacement("foo", "bar"),
+                Rule.StringPrepend(id = "p", text = "[Author] "),
+                Rule.WriteComicInfo(
+                    id = "wci",
+                    fields = mapOf(
+                        "Title" to "%__filename_stem__%",
+                        "Series" to "%series%",
                     ),
                 ),
             ),
         )
-        val out = executor.run(cfg, PipelineExecutor.Input("foo.cbz"))
-        assertEquals("bar.cbz", out.finalFilename)
+        val out = executor.run(
+            cfg,
+            PipelineExecutor.Input("Chapter 39.cbz", metadata = mapOf("series" to "My Series")),
+        )
+        // Filename mutation runs as usual; WriteComicInfo doesn't touch it.
+        assertEquals("[Author] Chapter 39.cbz", out.finalFilename)
+        // %__filename_stem__% resolves to the working filename minus ".cbz".
+        assertEquals("[Author] Chapter 39", out.comicInfoUpdates["Title"])
+        // %series% resolves from the input metadata.
+        assertEquals("My Series", out.comicInfoUpdates["Series"])
     }
 
     @Test fun `clean whitespace collapses repeated spaces and trims`() {

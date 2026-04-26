@@ -103,7 +103,8 @@ fun RuleEditorSheet(
                 is Rule.ExtractXmlMetadata -> MappingEditor(r) { draft = it }
                 is Rule.ExtractRegex -> ExtractRegexEditor(r) { draft = it }
                 is Rule.RegexReplace -> RegexEditor(r) { draft = it }
-                is Rule.RegexReplaceMany -> RegexManyEditor(r) { draft = it }
+                is Rule.Group -> GroupEditor(r) { draft = it }
+                is Rule.WriteComicInfo -> WriteComicInfoEditor(r) { draft = it }
                 is Rule.StringAppend -> SingleTextEditor(
                     stringResource(R.string.editor_append_label), r.text,
                 ) { draft = r.copy(text = it) }
@@ -113,10 +114,6 @@ fun RuleEditorSheet(
                 is Rule.TagRelocator -> TagRelocatorEditor(r) { draft = it }
                 is Rule.ConditionalFormat -> ConditionalEditor(r) { draft = it }
                 is Rule.CleanWhitespace -> CleanWsEditor(r) { draft = it }
-                // SectionHeader has nothing to configure beyond the label,
-                // which the LabelField above already exposes. Leave the
-                // body empty.
-                is Rule.SectionHeader -> Unit
             }
 
             Spacer(Modifier.height(24.dp))
@@ -154,45 +151,123 @@ private fun SingleTextEditor(label: String, value: String, onChange: (String) ->
     )
 }
 
+/**
+ * Group editor — same shape as ConditionalEditor's BranchSection but
+ * without the THEN/ELSE split. Tapping a child opens its own editor
+ * sheet on top of this one (recursive bottom sheets handle the
+ * stacking); + opens the rule picker, then auto-edits the freshly
+ * added rule so the user lands on its configuration immediately.
+ */
 @Composable
-private fun RegexManyEditor(rule: Rule.RegexReplaceMany, onChange: (Rule.RegexReplaceMany) -> Unit) {
+private fun GroupEditor(rule: Rule.Group, onChange: (Rule.Group) -> Unit) {
+    var editingNested by remember { mutableStateOf<Int?>(null) }
+    var pickingForGroup by remember { mutableStateOf(false) }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            stringResource(R.string.editor_regex_many_help),
+            stringResource(R.string.editor_group_help),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        rule.replacements.forEachIndexed { idx, pair ->
+        if (rule.rules.isEmpty()) {
+            Text(
+                stringResource(R.string.editor_group_empty),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            rule.rules.forEachIndexed { idx, child ->
+                NestedRuleRow(rule = child, onClick = { editingNested = idx })
+            }
+        }
+        OutlinedButton(onClick = { pickingForGroup = true }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.Add, null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.editor_group_add))
+        }
+    }
+
+    if (pickingForGroup) {
+        AddRuleSheet(
+            onDismiss = { pickingForGroup = false },
+            onPick = { kind ->
+                val newRule = newRuleOfKind(kind)
+                val updated = rule.copy(rules = rule.rules + newRule)
+                onChange(updated)
+                pickingForGroup = false
+                editingNested = updated.rules.lastIndex
+            },
+        )
+    }
+
+    editingNested?.let { idx ->
+        val nested = rule.rules.getOrNull(idx) ?: run { editingNested = null; return@let }
+        RuleEditorSheet(
+            rule = nested,
+            onDismiss = { editingNested = null },
+            onSave = { updatedNested ->
+                val newList = rule.rules.toMutableList().apply { this[idx] = updatedNested }
+                onChange(rule.copy(rules = newList))
+                editingNested = null
+            },
+            onDelete = {
+                val newList = rule.rules.toMutableList().apply { removeAt(idx) }
+                onChange(rule.copy(rules = newList))
+                editingNested = null
+            },
+        )
+    }
+}
+
+/**
+ * Editor for [Rule.WriteComicInfo]. Each row is one
+ * `<ElementName>` → value pair; both sides interpolate %vars% (the
+ * element name doesn't actually, but kept consistent for the user's
+ * mental model). Pre-seeded common keys (Title, Series, Writer) make
+ * the typical case a one-tap configuration.
+ */
+@Composable
+private fun WriteComicInfoEditor(rule: Rule.WriteComicInfo, onChange: (Rule.WriteComicInfo) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            stringResource(R.string.editor_writecomicinfo_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // Materialise as List<Pair<String, String>> so editing rows by
+        // index doesn't depend on Map iteration semantics. LinkedHashMap
+        // preserves insertion order, so toLinkedMap on the way back
+        // keeps the row ordering stable.
+        val entries: List<Pair<String, String>> = rule.fields.map { it.key to it.value }
+        entries.forEachIndexed { idx, entry ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlinedTextField(
-                    value = pair.pattern,
-                    onValueChange = { v ->
-                        val next = rule.replacements.toMutableList()
-                            .also { it[idx] = it[idx].copy(pattern = v) }
-                        onChange(rule.copy(replacements = next))
+                    value = entry.first,
+                    onValueChange = { newKey ->
+                        val next = entries.toMutableList().also { it[idx] = newKey to it[idx].second }
+                        onChange(rule.copy(fields = next.toLinkedMap()))
                     },
-                    label = { Text(stringResource(R.string.editor_regex_pattern)) },
+                    label = { Text(stringResource(R.string.editor_writecomicinfo_field)) },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
                 )
                 OutlinedTextField(
-                    value = pair.replacement,
-                    onValueChange = { v ->
-                        val next = rule.replacements.toMutableList()
-                            .also { it[idx] = it[idx].copy(replacement = v) }
-                        onChange(rule.copy(replacements = next))
+                    value = entry.second,
+                    onValueChange = { newValue ->
+                        val next = entries.toMutableList().also { it[idx] = it[idx].first to newValue }
+                        onChange(rule.copy(fields = next.toLinkedMap()))
                     },
-                    label = { Text(stringResource(R.string.editor_regex_replacement)) },
-                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.editor_writecomicinfo_value)) },
+                    modifier = Modifier.weight(1.2f),
                     singleLine = true,
                 )
                 IconButton(onClick = {
-                    val next = rule.replacements.toMutableList().also { it.removeAt(idx) }
-                    onChange(rule.copy(replacements = next))
+                    val next = entries.toMutableList().also { it.removeAt(idx) }
+                    onChange(rule.copy(fields = next.toLinkedMap()))
                 }) {
                     Icon(Icons.Outlined.Delete, stringResource(R.string.rule_delete_cd))
                 }
@@ -200,27 +275,20 @@ private fun RegexManyEditor(rule: Rule.RegexReplaceMany, onChange: (Rule.RegexRe
         }
         OutlinedButton(
             onClick = {
-                onChange(
-                    rule.copy(
-                        replacements = rule.replacements + Rule.RegexReplaceMany.Replacement("", ""),
-                    ),
-                )
+                val next = (entries + ("" to "")).toLinkedMap()
+                onChange(rule.copy(fields = next))
             },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Icon(Icons.Outlined.Add, null)
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.editor_regex_many_add))
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
-                checked = rule.ignoreCase,
-                onCheckedChange = { onChange(rule.copy(ignoreCase = it)) },
-            )
-            Text(stringResource(R.string.editor_case_insensitive))
+            Text(stringResource(R.string.editor_writecomicinfo_add))
         }
     }
 }
+
+private fun List<Pair<String, String>>.toLinkedMap(): Map<String, String> =
+    associateTo(LinkedHashMap()) { it }
 
 @Composable
 private fun RegexEditor(rule: Rule.RegexReplace, onChange: (Rule.RegexReplace) -> Unit) {
@@ -515,7 +583,12 @@ private fun newRuleOfKind(kind: RuleKind): Rule {
             id = id, source = "summary", target = "language", pattern = "",
         )
         RuleKind.Regex -> Rule.RegexReplace(id = id, pattern = "", replacement = "")
-        RuleKind.RegexMany -> Rule.RegexReplaceMany(id = id, replacements = emptyList())
+        RuleKind.Group -> Rule.Group(id = id, label = "Group", rules = emptyList())
+        RuleKind.WriteComicInfo -> Rule.WriteComicInfo(
+            id = id,
+            label = "Write to ComicInfo.xml",
+            fields = mapOf("Title" to "%__filename_stem__%"),
+        )
         RuleKind.Append -> Rule.StringAppend(id = id, text = "")
         RuleKind.Prepend -> Rule.StringPrepend(id = id, text = "")
         RuleKind.Relocator -> Rule.TagRelocator(id = id, pattern = "")
@@ -524,7 +597,6 @@ private fun newRuleOfKind(kind: RuleKind): Rule {
             condition = Condition(variable = "genre", op = Condition.Op.CONTAINS, value = ""),
         )
         RuleKind.CleanWs -> Rule.CleanWhitespace(id = id)
-        RuleKind.SectionHeader -> Rule.SectionHeader(id = id, label = "Section")
     }
 }
 

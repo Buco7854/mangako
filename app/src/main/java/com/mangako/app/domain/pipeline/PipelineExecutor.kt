@@ -33,6 +33,14 @@ class PipelineExecutor(
         val finalFilename: String,
         val variables: Map<String, String>,
         val steps: List<AuditStep>,
+        /**
+         * Side-effect map of `<ElementName>` → value collected from any
+         * [Rule.WriteComicInfo] steps that ran. The worker applies these
+         * to the .cbz's ComicInfo.xml after the pipeline finishes; the
+         * pipeline itself doesn't have file access. Last write wins on
+         * key collisions.
+         */
+        val comicInfoUpdates: Map<String, String> = emptyMap(),
     )
 
     fun run(config: PipelineConfig, input: Input): Output =
@@ -40,28 +48,44 @@ class PipelineExecutor(
 
     private fun runAtDepth(config: PipelineConfig, input: Input, depth: Int, baseIndex: Int): Output {
         val steps = mutableListOf<AuditStep>()
-        // "__filename__" is a reserved variable — rules can inspect it in conditions.
+        // "__filename__" / "__filename_stem__" are reserved variables. Stem
+        // is the working filename minus a trailing `.cbz` so users can write
+        // it into ComicInfo's <Title> without the extension showing up in
+        // the LANraragi UI. Rules can inspect either in conditions or
+        // interpolate them via %tokens%.
         val vars = LinkedHashMap<String, String>(input.metadata).apply {
             put("__filename__", input.originalFilename)
+            put("__filename_stem__", input.originalFilename.removeSuffix(".cbz"))
         }
         var current = input.originalFilename
         var idx = baseIndex
+        val pendingComicInfoUpdates = LinkedHashMap<String, String>()
         for (rule in config.rules) {
             val res = step(rule, current, vars, depth)
             steps += res.asAudit(idx++, depth)
             if (!res.skipped) {
                 current = res.after
                 vars["__filename__"] = current
+                vars["__filename_stem__"] = current.removeSuffix(".cbz")
                 vars += res.variableUpdates
             }
-            // Conditional rules flatten their own sub-steps into the trail,
-            // tagged with depth+1 so the UI can indent them.
+            // Side-effect: ComicInfo writes accumulate across the run; later
+            // writes for the same key win, matching how a user reading the
+            // rule list top-down would expect.
+            if (res.comicInfoUpdates.isNotEmpty()) pendingComicInfoUpdates += res.comicInfoUpdates
+            // Conditional / Group rules flatten their own sub-steps into the
+            // trail, tagged with depth+1 so the UI can indent them.
             if (res.substeps.isNotEmpty()) {
                 steps += res.substeps
                 idx += res.substeps.size
             }
         }
-        return Output(finalFilename = current, variables = vars, steps = steps)
+        return Output(
+            finalFilename = current,
+            variables = vars,
+            steps = steps,
+            comicInfoUpdates = pendingComicInfoUpdates,
+        )
     }
 
     private fun step(rule: Rule, input: String, vars: Map<String, String>, depth: Int): StepResult {
@@ -120,24 +144,40 @@ class PipelineExecutor(
                         StepResult(rule, input, out, emptyMap(), durationMs = msSince(started))
                     }
 
-                    is Rule.RegexReplaceMany -> {
-                        val opts = if (rule.ignoreCase) setOf(RegexOption.IGNORE_CASE) else emptySet()
-                        var working = input
-                        var hits = 0
-                        for (r in rule.replacements) {
-                            if (r.pattern.isEmpty()) continue
-                            val regex = Regex(r.pattern, opts)
-                            val replacement = interpolate(r.replacement, vars, escapeReplacement = true)
-                            val next = regex.replace(working, replacement)
-                            if (next != working) hits++
-                            working = next
-                        }
+                    is Rule.Group -> {
+                        // Same shape as ConditionalFormat's branch run, just
+                        // without the condition gate — every nested rule
+                        // executes in order against the current input.
+                        val subOut = runAtDepth(
+                            PipelineConfig(rules = rule.rules),
+                            Input(input, vars),
+                            depth = depth + 1,
+                            baseIndex = 0,
+                        )
                         StepResult(
                             rule = rule,
                             before = input,
-                            after = working,
+                            after = subOut.finalFilename,
+                            variableUpdates = subOut.variables.filterKeys { it !in vars || vars[it] != subOut.variables[it] },
+                            note = if (rule.rules.isEmpty()) "Empty group" else "${rule.rules.size} nested rule${if (rule.rules.size == 1) "" else "s"}",
+                            substeps = subOut.steps,
+                            comicInfoUpdates = subOut.comicInfoUpdates,
+                            durationMs = msSince(started),
+                        )
+                    }
+
+                    is Rule.WriteComicInfo -> {
+                        val resolved = rule.fields
+                            .filterKeys { it.isNotBlank() }
+                            .mapValues { (_, template) -> interpolate(template, vars, false) }
+                        StepResult(
+                            rule = rule,
+                            before = input,
+                            after = input,
                             variableUpdates = emptyMap(),
-                            note = if (hits == 0) "no replacement matched" else "$hits / ${rule.replacements.size} matched",
+                            comicInfoUpdates = resolved,
+                            note = if (resolved.isEmpty()) "(no fields configured)"
+                            else resolved.entries.joinToString(", ") { (k, v) -> "<$k>=${v.take(24)}" },
                             durationMs = msSince(started),
                         )
                     }
@@ -187,19 +227,10 @@ class PipelineExecutor(
                             variableUpdates = subOut.variables.filterKeys { it !in vars || vars[it] != subOut.variables[it] },
                             note = "Branch: ${if (branchTaken) "THEN" else "ELSE"} (${branch.size} rule${if (branch.size == 1) "" else "s"})",
                             substeps = subOut.steps,
+                            comicInfoUpdates = subOut.comicInfoUpdates,
                             durationMs = msSince(started),
                         )
                     }
-
-                    is Rule.SectionHeader -> StepResult(
-                        rule = rule,
-                        before = input,
-                        after = input,
-                        variableUpdates = emptyMap(),
-                        skipped = true,
-                        skippedReason = "Section header — no-op",
-                        durationMs = msSince(started),
-                    )
 
                     is Rule.CleanWhitespace -> {
                         val collapsed = input.replace(Regex("\\s{2,}"), " ")
@@ -269,6 +300,11 @@ class PipelineExecutor(
         val skippedReason: String? = null,
         val note: String? = null,
         val substeps: List<AuditStep> = emptyList(),
+        /** Side-effect updates this step contributes to the archive's
+         *  ComicInfo.xml. Only [Rule.WriteComicInfo] populates it; nested
+         *  containers ([Rule.Group], [Rule.ConditionalFormat]) bubble it
+         *  up from the sub-run's [Output.comicInfoUpdates]. */
+        val comicInfoUpdates: Map<String, String> = emptyMap(),
         val durationMs: Long = 0,
     ) {
         fun asAudit(index: Int, depth: Int) = AuditStep(

@@ -67,27 +67,42 @@ class PipelineJsonTest {
         )
     }
 
-    @Test fun `lanraragi standard - leaves filename with existing artist tag alone`() {
+    @Test fun `lanraragi standard - rebuilds filename from ComicInfo, not detection`() {
+        // The pipeline now extracts everything it needs from ComicInfo
+        // and assembles the filename from scratch in one template
+        // step, so whatever bracket tags happened to be in the
+        // detected filename are irrelevant — the upload name is
+        // derived from %writer%, %title%, %language% (et al). If the
+        // user wants a different writer they fix it via the
+        // edit-detection sheet, not by trusting the original filename.
         val pipeline = PipelineExecutor().run(
             DefaultTemplate.lanraragiStandard(),
             PipelineExecutor.Input(
-                originalFilename = "[Artist] Title.cbz",
-                metadata = mapOf("writer" to "Other", "language" to "English"),
+                originalFilename = "[OldArtist] Whatever.cbz",
+                metadata = mapOf(
+                    "writer" to "Other",
+                    "title" to "Real Title",
+                    "language" to "English",
+                ),
             ),
         )
-        // No second [Other] should be prepended — user already has a leading tag.
-        assertTrue(
-            "Did not expect a second '[Other]' prefix in '${pipeline.finalFilename}'",
-            !pipeline.finalFilename.startsWith("[Other]"),
-        )
+        assertEquals("[Other] Real Title [English].cbz", pipeline.finalFilename)
     }
 
-    @Test fun `lanraragi standard - sanitises forbidden characters`() {
+    @Test fun `lanraragi standard - sanitises forbidden characters in metadata`() {
+        // The build template is "[%writer%] %title% [%language%]…" so
+        // the only way bad chars end up in the filename is via metadata
+        // (e.g. a downloader stuffing a colon into the series title).
+        // The sanitise step must still strip them.
         val pipeline = PipelineExecutor().run(
             DefaultTemplate.lanraragiStandard(),
             PipelineExecutor.Input(
-                originalFilename = "[Artist] Title*?<>|.cbz",
-                metadata = mapOf("writer" to "Artist", "language" to "English"),
+                originalFilename = "x.cbz",
+                metadata = mapOf(
+                    "writer" to "Artist",
+                    "title" to "Title*?<>|",
+                    "language" to "English",
+                ),
             ),
         )
         listOf("*", "?", "<", ">", "|").forEach { c ->

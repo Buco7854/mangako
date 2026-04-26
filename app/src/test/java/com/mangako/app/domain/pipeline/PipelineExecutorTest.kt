@@ -1,6 +1,7 @@
 package com.mangako.app.domain.pipeline
 
 import com.mangako.app.domain.rule.Condition
+import com.mangako.app.domain.rule.DefaultTemplate
 import com.mangako.app.domain.rule.PipelineConfig
 import com.mangako.app.domain.rule.Rule
 import org.junit.Assert.assertEquals
@@ -209,6 +210,29 @@ class PipelineExecutorTest {
         assertEquals("My Series", out.comicInfoUpdates["Series"])
     }
 
+    @Test fun `SetVariable on __filename__ rewrites the working filename`() {
+        // Lets the default template assemble the final name from
+        // variables in a single template step instead of mutating the
+        // filename through ten separate rules.
+        val cfg = PipelineConfig(
+            rules = listOf(
+                Rule.SetVariable(
+                    id = "build",
+                    target = "__filename__",
+                    value = "[%writer%] %title%.cbz",
+                ),
+            ),
+        )
+        val out = executor.run(
+            cfg,
+            PipelineExecutor.Input(
+                "raw.cbz",
+                metadata = mapOf("writer" to "Author", "title" to "My Series"),
+            ),
+        )
+        assertEquals("[Author] My Series.cbz", out.finalFilename)
+    }
+
     @Test fun `SetVariable copies one variable into another with %tokens%`() {
         // Mirrors the default template's "Fix generic titles" branch:
         // when %title% is generic (e.g. 'Chapter 39'), promote %series%
@@ -229,6 +253,54 @@ class PipelineExecutorTest {
         )
         assertEquals("My Series", out.variables["title"])
         assertEquals("My Series", out.comicInfoUpdates["Title"])
+    }
+
+    @Test fun `default template handles a typical Mihon manhwa download`() {
+        // Smoke test for the whole LANraragi Standard pipeline, the
+        // shape users actually encounter: Mihon writes ComicInfo with
+        // a generic Title and the file goes through extraction →
+        // title fix → manhwa append → filename build → ComicInfo sync.
+        val cfg = DefaultTemplate.lanraragiStandard()
+        val out = executor.run(
+            cfg,
+            PipelineExecutor.Input(
+                originalFilename = "Chapter 39.cbz",
+                metadata = mapOf(
+                    "title" to "Chapter 39",
+                    "series" to "My Series",
+                    "writer" to "Author",
+                    "number" to "39",
+                    "genre" to "Manhwa; Action",
+                    "language" to "English",
+                ),
+            ),
+        )
+        assertEquals("[Author] My Series Ch 39 [English] [Manhwa].cbz", out.finalFilename)
+        assertEquals("My Series Ch 39", out.comicInfoUpdates["Title"])
+        assertEquals("", out.comicInfoUpdates["Series"])
+    }
+
+    @Test fun `default template handles a non-manhwa upload`() {
+        // No "Manhwa" in genre → no chapter token in the title and no
+        // [Manhwa] suffix on the filename.
+        val cfg = DefaultTemplate.lanraragiStandard()
+        val out = executor.run(
+            cfg,
+            PipelineExecutor.Input(
+                originalFilename = "Volume 2.cbz",
+                metadata = mapOf(
+                    "title" to "Some Real Title",
+                    "series" to "My Series",
+                    "writer" to "Author",
+                    "number" to "2",
+                    "genre" to "Action",
+                    "language" to "English",
+                ),
+            ),
+        )
+        // Title was meaningful, so the upstream value is preserved.
+        assertEquals("[Author] Some Real Title [English].cbz", out.finalFilename)
+        assertEquals("Some Real Title", out.comicInfoUpdates["Title"])
     }
 
     @Test fun `clean whitespace collapses repeated spaces and trims`() {

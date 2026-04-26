@@ -141,10 +141,17 @@ class PipelineExecutor(
                             StepResult.skipped(rule, input, "No target variable set")
                         } else {
                             val resolved = interpolate(rule.value, vars, escapeReplacement = false)
+                            // Setting the reserved %__filename__% mutates
+                            // the working filename too, so a "Build
+                            // filename" step at the end of the pipeline
+                            // can compose the final name from variables
+                            // in a single template — e.g.
+                            // "[%writer%] %title% [%language%].cbz".
+                            val newFilename = if (rule.target == "__filename__") resolved else input
                             StepResult(
                                 rule = rule,
                                 before = input,
-                                after = input,
+                                after = newFilename,
                                 variableUpdates = mapOf(rule.target to resolved),
                                 note = "%${rule.target}% = \"${resolved.take(32)}\"",
                                 durationMs = msSince(started),

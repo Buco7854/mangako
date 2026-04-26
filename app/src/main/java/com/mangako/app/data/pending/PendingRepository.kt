@@ -2,11 +2,15 @@ package com.mangako.app.data.pending
 
 import com.mangako.app.data.db.PendingDao
 import com.mangako.app.data.db.PendingEntry
+import com.mangako.app.data.db.StatusCount
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+
+@Suppress("unused") // surfaced via observeCounts; explicit re-export keeps the data class reachable.
+private typealias PendingStatusCount = StatusCount
 
 enum class PendingStatus { PENDING, APPROVED, REJECTED, DONE }
 
@@ -33,6 +37,21 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
 
     fun observePending(): Flow<List<PendingFile>> =
         dao.observeByStatus(PendingStatus.PENDING.name).map { rows -> rows.map { it.toDomain() } }
+
+    /** Observe rows that match any status in [statuses] — backs the Inbox
+     *  filter chip switch (Pending / Processed / Ignored). */
+    fun observeByStatuses(statuses: Set<PendingStatus>): Flow<List<PendingFile>> =
+        dao.observeByStatuses(statuses.map { it.name }).map { rows -> rows.map { it.toDomain() } }
+
+    /** Reactive [PendingStatus] → count map. Empty buckets are zero-filled. */
+    fun observeCounts(): Flow<Map<PendingStatus, Int>> = dao.countByStatus().map { rows ->
+        val seed = PendingStatus.values().associateWith { 0 }
+        rows.fold(seed) { acc, row ->
+            val status = runCatching { PendingStatus.valueOf(row.status) }.getOrNull()
+                ?: return@fold acc
+            acc + (status to row.count)
+        }
+    }
 
     fun countPending(): Flow<Int> = dao.countPending()
 
@@ -67,6 +86,15 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
     suspend fun approve(id: String) = dao.setStatus(id, PendingStatus.APPROVED.name)
     suspend fun reject(id: String) = dao.setStatus(id, PendingStatus.REJECTED.name)
     suspend fun markDone(id: String) = dao.setStatus(id, PendingStatus.DONE.name)
+
+    /**
+     * Resets a previously-processed or ignored row back to PENDING so the
+     * user can run it through the pipeline again. The original file URI
+     * is kept; if the underlying SAF document no longer resolves (file was
+     * deleted or moved), the next process attempt will fail loudly via the
+     * usual ProcessCbzWorker error path rather than silently no-op.
+     */
+    suspend fun reprocess(id: String) = dao.setStatus(id, PendingStatus.PENDING.name)
     suspend fun delete(id: String) = dao.delete(id)
 
     suspend fun pruneOlderThan(cutoff: Long) = dao.pruneOld(cutoff)

@@ -19,8 +19,6 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -96,11 +94,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 .padding(inner)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                // No bottom padding — the section card flows to the
-                // bottom navigation bar. Previously a stray 8.dp left a
-                // visible gap below the last section.
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(horizontal = 20.dp),
         ) {
             Section(stringResource(R.string.settings_section_server)) {
                 DebouncedTextField(
@@ -348,19 +342,31 @@ private fun isInsecureUrl(url: String): Boolean {
     return true
 }
 
+/**
+ * Mihon-style section: a primary-tinted, all-caps-ish label sitting directly
+ * on the screen background — no per-section Card wrap. Rows below it sit
+ * directly on the Scaffold body so the screen reads as one continuous
+ * surface rather than a stack of nested cards-inside-cards.
+ *
+ * Compared to the previous Card-wrapping `Section`, this trims roughly 32dp
+ * of nested card padding from each section and matches the Settings layouts
+ * users get used to in apps like Mihon, Aniyomi, AnkiDroid, etc.
+ */
 @Composable
 private fun Section(title: String, content: @Composable () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Column(
-            Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            content()
-        }
+        Text(
+            title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        content()
     }
 }
 

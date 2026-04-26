@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Refresh
@@ -29,6 +30,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -102,29 +104,78 @@ fun InboxScreen(
                 )
             }
 
+            FilterChipRow(
+                selected = state.filter,
+                counts = state.counts,
+                onSelect = viewModel::setFilter,
+            )
+
             if (state.items.isEmpty()) {
-                EmptyInbox(modifier = Modifier.weight(1f))
+                EmptyInbox(filter = state.filter, modifier = Modifier.weight(1f))
                 return@Scaffold
             }
 
-            BulkBar(
-                count = state.items.size,
-                onApproveAll = viewModel::approveAll,
-                onRejectAll = viewModel::rejectAll,
-            )
+            // The Process-all / Ignore-all bulk buttons only make sense in the
+            // Pending view; in the Processed/Ignored views the per-card
+            // 'Reprocess' / 'Forget' actions cover what users actually want.
+            if (state.filter == InboxViewModel.Filter.PENDING) {
+                BulkBar(
+                    count = state.items.size,
+                    onApproveAll = viewModel::approveAll,
+                    onRejectAll = viewModel::rejectAll,
+                )
+            }
+
             LazyColumn(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(state.items, key = { it.file.id }) { item ->
-                    PendingCard(
+                    InboxCard(
                         item = item,
+                        filter = state.filter,
                         onApprove = { viewModel.approve(item.file) },
                         onReject = { viewModel.reject(item.file) },
+                        onReprocess = { viewModel.reprocess(item.file) },
+                        onForget = { viewModel.forget(item.file) },
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Pending / Processed / Ignored chip row at the top of the Inbox. Each chip
+ * carries the live count for its bucket so the user can scan inbox state at a
+ * glance — same gesture as Mihon's library / updates filter rows.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FilterChipRow(
+    selected: InboxViewModel.Filter,
+    counts: Map<InboxViewModel.Filter, Int>,
+    onSelect: (InboxViewModel.Filter) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        InboxViewModel.Filter.values().forEach { f ->
+            val count = counts[f] ?: 0
+            val labelRes = when (f) {
+                InboxViewModel.Filter.PENDING -> R.string.inbox_filter_pending
+                InboxViewModel.Filter.PROCESSED -> R.string.inbox_filter_processed
+                InboxViewModel.Filter.IGNORED -> R.string.inbox_filter_ignored
+            }
+            FilterChip(
+                selected = f == selected,
+                onClick = { onSelect(f) },
+                label = { Text("${stringResource(labelRes)} · $count") },
+            )
         }
     }
 }
@@ -204,7 +255,12 @@ private fun SetupStep(label: String, done: Boolean, onTap: (() -> Unit)?) {
 }
 
 @Composable
-private fun EmptyInbox(modifier: Modifier = Modifier) {
+private fun EmptyInbox(filter: InboxViewModel.Filter, modifier: Modifier = Modifier) {
+    val (titleRes, subtitleRes) = when (filter) {
+        InboxViewModel.Filter.PENDING -> R.string.inbox_empty_title to R.string.inbox_empty_subtitle
+        InboxViewModel.Filter.PROCESSED -> R.string.inbox_empty_processed_title to R.string.inbox_empty_processed_subtitle
+        InboxViewModel.Filter.IGNORED -> R.string.inbox_empty_ignored_title to R.string.inbox_empty_ignored_subtitle
+    }
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
@@ -215,13 +271,13 @@ private fun EmptyInbox(modifier: Modifier = Modifier) {
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                stringResource(R.string.inbox_empty_title),
+                stringResource(titleRes),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                stringResource(R.string.inbox_empty_subtitle),
+                stringResource(subtitleRes),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 32.dp),
@@ -250,10 +306,13 @@ private fun BulkBar(count: Int, onApproveAll: () -> Unit, onRejectAll: () -> Uni
 }
 
 @Composable
-private fun PendingCard(
+private fun InboxCard(
     item: InboxViewModel.InboxItem,
+    filter: InboxViewModel.Filter,
     onApprove: () -> Unit,
     onReject: () -> Unit,
+    onReprocess: () -> Unit,
+    onForget: () -> Unit,
 ) {
     val file = item.file
     Card(
@@ -301,17 +360,37 @@ private fun PendingCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onReject, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Outlined.Close, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.inbox_ignore))
+            // The button row swaps shape per-filter:
+            //  - Pending  → [ Ignore ] [ Process ]   (the daily decision)
+            //  - Processed/Ignored → [ Forget ] [ Reprocess ]  (revisit a past
+            //    decision; Reprocess just resets the row to PENDING so the
+            //    user can re-decide via the same Approve flow)
+            when (filter) {
+                InboxViewModel.Filter.PENDING -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onReject, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Outlined.Close, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.inbox_ignore))
+                    }
+                    Button(onClick = onApprove, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Outlined.Check, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.inbox_process))
+                    }
                 }
-                Button(onClick = onApprove, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Outlined.Check, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.inbox_process))
-                }
+                InboxViewModel.Filter.PROCESSED, InboxViewModel.Filter.IGNORED ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onForget, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Outlined.Delete, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.inbox_forget))
+                        }
+                        Button(onClick = onReprocess, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Outlined.Refresh, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.inbox_reprocess))
+                        }
+                    }
             }
         }
     }

@@ -49,6 +49,9 @@ data class PendingEntry(
     val status: String,
 )
 
+/** Row of a `GROUP BY status` query — used for the Inbox filter chip counts. */
+data class StatusCount(val status: String, val count: Int)
+
 @Dao
 interface HistoryDao {
     @Query("SELECT * FROM history ORDER BY createdAt DESC LIMIT :limit")
@@ -72,6 +75,9 @@ interface PendingDao {
     @Query("SELECT * FROM pending WHERE status = :status ORDER BY detectedAt DESC")
     fun observeByStatus(status: String = "PENDING"): Flow<List<PendingEntry>>
 
+    @Query("SELECT * FROM pending WHERE status IN (:statuses) ORDER BY detectedAt DESC")
+    fun observeByStatuses(statuses: List<String>): Flow<List<PendingEntry>>
+
     @Query("SELECT * FROM pending ORDER BY detectedAt DESC LIMIT :limit")
     fun observeAll(limit: Int = 200): Flow<List<PendingEntry>>
 
@@ -83,6 +89,9 @@ interface PendingDao {
 
     @Query("SELECT COUNT(*) FROM pending WHERE status = 'PENDING'")
     fun countPending(): Flow<Int>
+
+    @Query("SELECT status, COUNT(*) AS count FROM pending GROUP BY status")
+    fun countByStatus(): Flow<List<StatusCount>>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnoring(entry: PendingEntry): Long

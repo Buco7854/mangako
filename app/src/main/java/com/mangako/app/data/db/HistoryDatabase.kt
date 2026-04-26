@@ -47,6 +47,14 @@ data class PendingEntry(
     val folderUri: String,
     /** PENDING, APPROVED, REJECTED, DONE */
     val status: String,
+    /**
+     * The actual filename Mangako produced for this file when the pipeline
+     * ran. Captured at markDone() time so the Inbox/Processed view shows
+     * what was really uploaded, not a re-run of today's pipeline against
+     * the original name. NULL for rows that never reached DONE, or rows
+     * created before this column existed.
+     */
+    val finalName: String? = null,
 )
 
 /** Row of a `GROUP BY status` query — used for the Inbox filter chip counts. */
@@ -99,6 +107,9 @@ interface PendingDao {
     @Query("UPDATE pending SET status = :status WHERE id = :id")
     suspend fun setStatus(id: String, status: String)
 
+    @Query("UPDATE pending SET status = :status, finalName = :finalName WHERE id = :id")
+    suspend fun setStatusAndFinal(id: String, status: String, finalName: String)
+
     @Query("DELETE FROM pending WHERE id = :id")
     suspend fun delete(id: String)
 
@@ -116,7 +127,7 @@ class Converters {
         HistoryJson.encodeToString(trail)
 }
 
-@Database(entities = [HistoryEntry::class, PendingEntry::class], version = 1, exportSchema = false)
+@Database(entities = [HistoryEntry::class, PendingEntry::class], version = 2, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class HistoryDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao

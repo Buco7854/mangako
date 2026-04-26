@@ -113,6 +113,10 @@ fun RuleEditorSheet(
                 is Rule.TagRelocator -> TagRelocatorEditor(r) { draft = it }
                 is Rule.ConditionalFormat -> ConditionalEditor(r) { draft = it }
                 is Rule.CleanWhitespace -> CleanWsEditor(r) { draft = it }
+                // SectionHeader has nothing to configure beyond the label,
+                // which the LabelField above already exposes. Leave the
+                // body empty.
+                is Rule.SectionHeader -> Unit
             }
 
             Spacer(Modifier.height(24.dp))
@@ -520,6 +524,7 @@ private fun newRuleOfKind(kind: RuleKind): Rule {
             condition = Condition(variable = "genre", op = Condition.Op.CONTAINS, value = ""),
         )
         RuleKind.CleanWs -> Rule.CleanWhitespace(id = id)
+        RuleKind.SectionHeader -> Rule.SectionHeader(id = id, label = "Section")
     }
 }
 

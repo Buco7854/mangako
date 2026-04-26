@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.ContentPasteSearch
+import androidx.compose.material.icons.outlined.ShortText
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.SwapHoriz
@@ -234,6 +235,7 @@ class PipelineViewModel @Inject constructor(
                 condition = Condition(variable = "genre", op = Condition.Op.CONTAINS, value = ""),
             )
             RuleKind.CleanWs -> Rule.CleanWhitespace(id = id)
+            RuleKind.SectionHeader -> Rule.SectionHeader(id = id, label = "Section")
         }
     }
 }
@@ -252,6 +254,7 @@ enum class RuleKind(
     Relocator(R.string.rule_kind_relocator, R.string.rule_kind_relocator_blurb, Icons.Outlined.SwapHoriz),
     Conditional(R.string.rule_kind_conditional, R.string.rule_kind_conditional_blurb, Icons.AutoMirrored.Outlined.CallSplit),
     CleanWs(R.string.rule_kind_cleanws, R.string.rule_kind_cleanws_blurb, Icons.Outlined.CleaningServices),
+    SectionHeader(R.string.rule_kind_section, R.string.rule_kind_section_blurb, Icons.Outlined.ShortText),
 }
 
 /** The visual identity shown in rule cards, the picker, and the audit log. */
@@ -265,5 +268,6 @@ fun Rule.icon(): ImageVector = when (this) {
     is Rule.TagRelocator -> Icons.Outlined.SwapHoriz
     is Rule.ConditionalFormat -> Icons.AutoMirrored.Outlined.CallSplit
     is Rule.CleanWhitespace -> Icons.Outlined.CleaningServices
+    is Rule.SectionHeader -> Icons.Outlined.ShortText
 }
 

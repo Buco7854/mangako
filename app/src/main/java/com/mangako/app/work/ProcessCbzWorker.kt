@@ -114,7 +114,11 @@ class ProcessCbzWorker @AssistedInject constructor(
                 runCatching { docFile.delete() }.getOrDefault(false)
             } else false
             if (uploadStatus.success && pendingId != null) {
-                pendingRepo.markDone(pendingId)
+                // Persist the actually-uploaded filename onto the Pending row
+                // so the Inbox / Processed view renders the same string the
+                // user will see in LANraragi (not a fresh re-run of today's
+                // pipeline against the original name).
+                pendingRepo.markDone(pendingId, finalName)
                 Notifications.cancelDetected(applicationContext, pendingId)
             }
 

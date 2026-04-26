@@ -74,7 +74,12 @@ fun HistoryScreen(
     ) { inner ->
         if (items.isEmpty()) {
             Box(Modifier.padding(inner).fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.history_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    stringResource(R.string.history_empty),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                )
             }
             return@Scaffold
         }

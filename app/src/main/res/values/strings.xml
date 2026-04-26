@@ -99,6 +99,9 @@
     <string name="rule_kind_conditional_blurb">Run different rules depending on a condition</string>
     <string name="rule_kind_cleanws">Tidy whitespace</string>
     <string name="rule_kind_cleanws_blurb">Collapse double spaces and trim the ends</string>
+    <string name="rule_kind_section">Section header</string>
+    <string name="rule_kind_section_blurb">Visual divider — purely cosmetic, useful for grouping related rules</string>
+    <string name="pipeline_section_default">Section</string>
 
     <!-- Rule overflow menu -->
     <string name="rule_move_up">Move up</string>

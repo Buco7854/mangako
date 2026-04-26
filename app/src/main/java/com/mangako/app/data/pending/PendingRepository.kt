@@ -22,6 +22,10 @@ data class PendingFile(
     val detectedAt: Long,
     val folderUri: String,
     val status: PendingStatus,
+    /** The renamed filename actually written to LANraragi for this row. Null
+     *  for not-yet-processed rows. Lets the Inbox/Processed view show the
+     *  truth without a fuzzy join against history-by-original-name. */
+    val finalName: String? = null,
 )
 
 /**
@@ -85,7 +89,12 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
 
     suspend fun approve(id: String) = dao.setStatus(id, PendingStatus.APPROVED.name)
     suspend fun reject(id: String) = dao.setStatus(id, PendingStatus.REJECTED.name)
-    suspend fun markDone(id: String) = dao.setStatus(id, PendingStatus.DONE.name)
+
+    /** Mark a row DONE and remember exactly what filename was uploaded so
+     *  the Inbox can faithfully show original → final without joining by
+     *  fuzzy name matches against the history table. */
+    suspend fun markDone(id: String, finalName: String) =
+        dao.setStatusAndFinal(id, PendingStatus.DONE.name, finalName)
 
     /**
      * Resets a previously-processed or ignored row back to PENDING so the
@@ -107,5 +116,6 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
         detectedAt = detectedAt,
         folderUri = folderUri,
         status = runCatching { PendingStatus.valueOf(status) }.getOrDefault(PendingStatus.PENDING),
+        finalName = finalName,
     )
 }

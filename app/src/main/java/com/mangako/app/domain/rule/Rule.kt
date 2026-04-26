@@ -191,6 +191,30 @@ sealed class Rule {
         override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
     }
 
+    /**
+     * Visual divider with a label — purely a UI affordance for grouping
+     * adjacent rules under a heading (e.g. 'Emoji flags', 'Manhwa
+     * formatting'). The executor treats it as a no-op; the rule list
+     * renders it as a flat header row instead of a card.
+     *
+     * The `label` field on the base class is the heading text. We don't
+     * override displayName/describe with anything meaningful because the
+     * only place either is used is the rule editor and there isn't one
+     * for SectionHeader — tapping it goes straight to a label-rename
+     * affordance.
+     */
+    @Serializable
+    @SerialName("section_header")
+    data class SectionHeader(
+        override val id: String,
+        override val enabled: Boolean = true,
+        override val label: String? = null,
+    ) : Rule() {
+        override fun displayName() = label ?: "Section"
+        override fun describe() = "Visual divider — does nothing to the filename"
+        override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
+    }
+
     @Serializable
     @SerialName("clean_whitespace")
     data class CleanWhitespace(

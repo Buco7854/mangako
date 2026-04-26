@@ -2,6 +2,7 @@ package com.mangako.app.ui.pipeline
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -258,28 +259,41 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
                 ) {
                     items(rules, key = { it.id }) { rule ->
                         val idx = rules.indexOf(rule)
-                        RuleCard(
-                            rule = rule,
-                            isFirst = idx == 0,
-                            isLast = idx == rules.size - 1,
-                            reorderMode = false,
-                            onToggle = { viewModel.toggleEnabled(rule.id) },
-                            onEdit = { editingRule = rule },
-                            onDelete = { viewModel.remove(rule.id) },
-                            onMoveUp = { viewModel.moveUp(rule.id) },
-                            onMoveDown = { viewModel.moveDown(rule.id) },
-                            // Placement-only animation: animateItem()'s default
-                            // includes fade-in / fade-out specs that fire on
-                            // every reorder because LazyColumn briefly views
-                            // the swapped rows as 'left' and 'arrived' rather
-                            // than 'moved'. Disabling the fade specs keeps the
-                            // movement smooth without the flicker users were
-                            // seeing on Move up / Move down.
-                            modifier = Modifier.animateItem(
-                                fadeInSpec = null,
-                                fadeOutSpec = null,
-                            ),
-                        )
+                        if (rule is Rule.SectionHeader) {
+                            // Section headers render as flat labels — no
+                            // card chrome — so they read as 'this is the
+                            // beginning of a group of rules' rather than
+                            // as another step.
+                            SectionHeaderRow(
+                                rule = rule,
+                                isFirst = idx == 0,
+                                isLast = idx == rules.size - 1,
+                                onEdit = { editingRule = rule },
+                                onDelete = { viewModel.remove(rule.id) },
+                                onMoveUp = { viewModel.moveUp(rule.id) },
+                                onMoveDown = { viewModel.moveDown(rule.id) },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = null,
+                                    fadeOutSpec = null,
+                                ),
+                            )
+                        } else {
+                            RuleCard(
+                                rule = rule,
+                                isFirst = idx == 0,
+                                isLast = idx == rules.size - 1,
+                                reorderMode = false,
+                                onToggle = { viewModel.toggleEnabled(rule.id) },
+                                onEdit = { editingRule = rule },
+                                onDelete = { viewModel.remove(rule.id) },
+                                onMoveUp = { viewModel.moveUp(rule.id) },
+                                onMoveDown = { viewModel.moveDown(rule.id) },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = null,
+                                    fadeOutSpec = null,
+                                ),
+                            )
+                        }
                     }
                 }
             }
@@ -357,6 +371,66 @@ fun PipelineScreen(viewModel: PipelineViewModel = hiltViewModel()) {
  * Default is collapsed so the rules list — the actual product surface —
  * gets the visual weight.
  */
+/**
+ * Flat label row for [Rule.SectionHeader] entries in the pipeline list.
+ * No Card chrome — the whole point is to read as a group divider, not
+ * another step. Tap the title text to edit the label, ⋮ menu has
+ * Move up / down / Delete (no Toggle since SectionHeaders have no
+ * runtime effect).
+ */
+@Composable
+private fun SectionHeaderRow(
+    rule: Rule.SectionHeader,
+    isFirst: Boolean,
+    isLast: Boolean,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = rule.label?.takeIf { it.isNotBlank() } ?: stringResource(R.string.pipeline_section_default),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onEdit)
+                .padding(vertical = 4.dp),
+        )
+        IconButton(onClick = { menuOpen = true }) {
+            Icon(
+                Icons.Outlined.MoreVert,
+                contentDescription = stringResource(R.string.rule_more_actions),
+            )
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.rule_move_up)) },
+                enabled = !isFirst,
+                onClick = { menuOpen = false; onMoveUp() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.rule_move_down)) },
+                enabled = !isLast,
+                onClick = { menuOpen = false; onMoveDown() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.rule_delete_cd)) },
+                onClick = { menuOpen = false; onDelete() },
+            )
+        }
+    }
+}
+
 /**
  * Try-pipeline sheet — opens from the TopAppBar's play icon.
  *

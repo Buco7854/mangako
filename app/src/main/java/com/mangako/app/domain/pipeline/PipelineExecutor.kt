@@ -191,6 +191,16 @@ class PipelineExecutor(
                         )
                     }
 
+                    is Rule.SectionHeader -> StepResult(
+                        rule = rule,
+                        before = input,
+                        after = input,
+                        variableUpdates = emptyMap(),
+                        skipped = true,
+                        skippedReason = "Section header — no-op",
+                        durationMs = msSince(started),
+                    )
+
                     is Rule.CleanWhitespace -> {
                         val collapsed = input.replace(Regex("\\s{2,}"), " ")
                         val out = if (rule.trim) collapsed.trim() else collapsed

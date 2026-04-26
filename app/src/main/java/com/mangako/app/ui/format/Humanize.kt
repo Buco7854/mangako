@@ -24,6 +24,7 @@ fun Rule.humanTitle(): String = label?.takeIf { it.isNotBlank() } ?: when (this)
     }
     is Rule.ConditionalFormat -> "If/else"
     is Rule.CleanWhitespace -> "Tidy whitespace"
+    is Rule.SectionHeader -> label ?: "Section"
 }
 
 fun Rule.humanSubtitle(): String = when (this) {
@@ -56,6 +57,7 @@ fun Rule.humanSubtitle(): String = when (this) {
     is Rule.CleanWhitespace ->
         if (trim) "Collapse repeated spaces and trim the ends."
         else "Collapse repeated spaces."
+    is Rule.SectionHeader -> "Visual divider — purely cosmetic."
 }
 
 fun Condition.humanize(): String {
@@ -101,6 +103,7 @@ private fun String.humanizeRuleType(): String = when (this) {
     "TagRelocator" -> "Reposition tag"
     "ConditionalFormat" -> "If/else"
     "CleanWhitespace" -> "Tidy whitespace"
+    "SectionHeader" -> "Section"
     else -> this
 }
 

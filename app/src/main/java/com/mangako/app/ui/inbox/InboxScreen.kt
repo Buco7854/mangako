@@ -279,12 +279,14 @@ private fun EmptyInbox(filter: InboxViewModel.Filter, modifier: Modifier = Modif
                 stringResource(titleRes),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 stringResource(subtitleRes),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 32.dp),
             )
         }
@@ -396,7 +398,12 @@ private fun ProcessedCard(
     onForget: () -> Unit,
 ) {
     val file = item.file
-    val finalName = item.recordedFinal ?: item.previewedFinal
+    // Prefer the actually-uploaded filename stored on the row at processing
+    // time. previewedFinal is a re-run of today's pipeline against the
+    // original name, which would mismatch History after rule edits — we
+    // only use it as a fallback for legacy rows from before the column
+    // existed (when the DB had no recorded final).
+    val finalName = file.finalName ?: item.previewedFinal
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),

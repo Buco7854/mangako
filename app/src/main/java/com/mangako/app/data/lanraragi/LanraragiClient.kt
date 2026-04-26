@@ -101,13 +101,25 @@ class LanraragiClient(
                 setBody(MultiPartFormDataContent(parts))
             }
             when (response.status) {
-                HttpStatusCode.OK -> Result.success(response.body<UploadResponse>())
+                HttpStatusCode.OK -> {
+                    val body = response.body<UploadResponse>()
+                    // The upload's `title` form field is only consulted by
+                    // LANraragi when the archive has no ComicInfo.xml. If
+                    // the .cbz carries a <Title>, LANraragi overwrites our
+                    // value with the embedded one (e.g. 'Chapter 39'),
+                    // which is exactly what the user noticed in the web
+                    // UI. Force the renamed filename to win by re-issuing
+                    // the metadata via the dedicated update endpoint —
+                    // the spec calls that out as 'overwrite previous data',
+                    // so it does win against ComicInfo.
+                    body.id?.let { archiveId ->
+                        runCatching {
+                            updateMetadata(client, archiveId, title = safeName.removeSuffix(".cbz"))
+                        }
+                    }
+                    Result.success(body)
+                }
                 else -> {
-                    // Read the body so the user gets the server's actual error
-                    // message instead of just 'HTTP 400'. LANraragi returns a
-                    // small JSON snippet like {"error":"..."} on failure;
-                    // even when it doesn't, an arbitrary text body is more
-                    // useful than nothing in the audit trail.
                     val detail = runCatching { response.bodyAsText() }.getOrNull()?.trim().orEmpty()
                     val msg = buildString {
                         append("HTTP ").append(response.status.value)
@@ -122,6 +134,26 @@ class LanraragiClient(
         } finally {
             client.close()
         }
+    }
+
+    /**
+     * `PUT /api/archives/{id}/metadata?title=...` — overwrites the title
+     * field stored on the archive. We call this immediately after upload
+     * to ensure the renamed filename wins over any `<Title>` element in
+     * the .cbz's ComicInfo.xml (LANraragi's auto-extraction otherwise
+     * clobbers the value we send via the upload form).
+     *
+     * Best-effort: if it fails the upload itself still succeeded, so the
+     * caller wraps the call in runCatching and ignores the error.
+     */
+    private suspend fun updateMetadata(
+        client: HttpClient,
+        archiveId: String,
+        title: String,
+    ): HttpResponse = client.put(
+        baseUrl.trimEnd('/') + "/api/archives/" + archiveId + "/metadata",
+    ) {
+        url { parameters.append("title", title) }
     }
 
     /** Reachability probe for Settings → "Test connection". */

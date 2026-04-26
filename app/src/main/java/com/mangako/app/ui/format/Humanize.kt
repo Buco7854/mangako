@@ -15,6 +15,7 @@ fun Rule.humanTitle(): String = label?.takeIf { it.isNotBlank() } ?: when (this)
     is Rule.ExtractXmlMetadata -> "Read details from ComicInfo.xml"
     is Rule.ExtractRegex -> "Pull a value out of %$source%"
     is Rule.RegexReplace -> "Find and replace text"
+    is Rule.RegexReplaceMany -> "Find and replace (group)"
     is Rule.StringAppend -> "Add text to the end"
     is Rule.StringPrepend -> "Add text to the start"
     is Rule.TagRelocator -> when (position) {
@@ -36,6 +37,11 @@ fun Rule.humanSubtitle(): String = when (this) {
         val pat = pattern.ifBlank { "(no pattern yet)" }
         val rep = replacement.ifBlank { "(empty)" }
         "Replace /$pat/ with \"$rep\"."
+    }
+    is Rule.RegexReplaceMany -> when (replacements.size) {
+        0 -> "No replacements yet — tap to add some."
+        1 -> "1 find-and-replace pair."
+        else -> "${replacements.size} find-and-replace pairs applied in order."
     }
     is Rule.StringAppend -> if (text.isBlank()) "Append nothing yet." else "Append \"$text\" to the filename."
     is Rule.StringPrepend -> if (text.isBlank()) "Prepend nothing yet." else "Prepend \"$text\" to the filename."
@@ -89,6 +95,7 @@ private fun String.humanizeRuleType(): String = when (this) {
     "ExtractXmlMetadata" -> "Read ComicInfo.xml"
     "ExtractRegex" -> "Extract value"
     "RegexReplace" -> "Find and replace"
+    "RegexReplaceMany" -> "Find and replace (group)"
     "StringAppend" -> "Append text"
     "StringPrepend" -> "Prepend text"
     "TagRelocator" -> "Reposition tag"

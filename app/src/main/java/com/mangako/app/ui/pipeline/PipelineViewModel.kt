@@ -1,6 +1,7 @@
 package com.mangako.app.ui.pipeline
 
 import android.content.Context
+import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Article
@@ -8,19 +9,25 @@ import androidx.compose.material.icons.outlined.CallSplit
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.ContentPasteSearch
 import androidx.compose.material.icons.outlined.FindReplace
+import androidx.compose.material.icons.outlined.FormatListBulleted
 import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mangako.app.R
 import com.mangako.app.data.pipeline.PipelineRepository
+import com.mangako.app.domain.cbz.CbzProcessor
 import com.mangako.app.domain.pipeline.PipelineExecutor
 import com.mangako.app.domain.rule.Condition
 import com.mangako.app.domain.rule.PipelineConfig
 import com.mangako.app.domain.rule.Rule
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +42,7 @@ import javax.inject.Inject
 class PipelineViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val repo: PipelineRepository,
+    private val cbzProcessor: CbzProcessor,
 ) : ViewModel() {
 
     data class PreviewState(
@@ -46,6 +54,14 @@ class PipelineViewModel @Inject constructor(
             "number" to "1",
             "genre" to "Manhwa",
         ),
+        /** True while a real .cbz is being copied to cache + parsed. */
+        val loading: Boolean = false,
+        /**
+         * Display name of the user-picked .cbz, so the preview bar can show
+         * "from <filename>" instead of leaving the user wondering where the
+         * sample metadata came from.
+         */
+        val sourceLabel: String? = null,
     )
 
     data class UiState(
@@ -137,7 +153,49 @@ class PipelineViewModel @Inject constructor(
     }
 
     fun updatePreviewInput(filename: String) {
-        preview.value = preview.value.copy(input = filename)
+        // Manual edit unties the preview from any previously-picked file —
+        // the sample metadata reverts to the placeholder so users don't
+        // wonder why their typed filename still seems to "know" %title%.
+        preview.value = PreviewState(input = filename)
+    }
+
+    /**
+     * Async dry-run: copies [uri] to a temp cache file (so [CbzProcessor] can
+     * read it as a local zip), pulls its ComicInfo metadata, and updates the
+     * preview state with the real filename + variables. The preview Flow
+     * downstream automatically re-runs the pipeline against this new input.
+     *
+     * Falls back to the picked URI's display name with empty metadata if the
+     * archive has no readable ComicInfo.xml.
+     */
+    fun previewFromUri(uri: Uri) = viewModelScope.launch {
+        val displayName = DocumentFile.fromSingleUri(appContext, uri)?.name ?: "(picked file)"
+        preview.value = preview.value.copy(loading = true, sourceLabel = displayName, input = displayName)
+
+        val metadata = withContext(Dispatchers.IO) {
+            val tempFile = File(appContext.cacheDir, "preview_${System.currentTimeMillis()}.cbz")
+            try {
+                appContext.contentResolver.openInputStream(uri)?.use { input ->
+                    tempFile.outputStream().use { output -> input.copyTo(output) }
+                }
+                cbzProcessor.extractMetadata(tempFile)
+            } catch (t: Throwable) {
+                emptyMap()
+            } finally {
+                tempFile.delete()
+            }
+        }
+        preview.value = PreviewState(
+            input = displayName,
+            sampleMetadata = metadata,
+            loading = false,
+            sourceLabel = displayName,
+        )
+    }
+
+    /** Drop any user-picked file and revert to the canned sample preview. */
+    fun resetPreview() {
+        preview.value = PreviewState()
     }
 
     fun exportJson(onDone: (String) -> Unit) = viewModelScope.launch {
@@ -167,6 +225,7 @@ class PipelineViewModel @Inject constructor(
                 id = id, source = "summary", target = "language", pattern = "",
             )
             RuleKind.Regex -> Rule.RegexReplace(id = id, pattern = "", replacement = "")
+            RuleKind.RegexMany -> Rule.RegexReplaceMany(id = id, replacements = emptyList())
             RuleKind.Append -> Rule.StringAppend(id = id, text = "")
             RuleKind.Prepend -> Rule.StringPrepend(id = id, text = "")
             RuleKind.Relocator -> Rule.TagRelocator(id = id, pattern = "")
@@ -187,6 +246,7 @@ enum class RuleKind(
     ExtractXml(R.string.rule_kind_extract_xml, R.string.rule_kind_extract_xml_blurb, Icons.Outlined.Article),
     ExtractRegex(R.string.rule_kind_extract_regex, R.string.rule_kind_extract_regex_blurb, Icons.Outlined.ContentPasteSearch),
     Regex(R.string.rule_kind_regex, R.string.rule_kind_regex_blurb, Icons.Outlined.FindReplace),
+    RegexMany(R.string.rule_kind_regex_many, R.string.rule_kind_regex_many_blurb, Icons.Outlined.FormatListBulleted),
     Append(R.string.rule_kind_append, R.string.rule_kind_append_blurb, Icons.Outlined.FormatQuote),
     Prepend(R.string.rule_kind_prepend, R.string.rule_kind_prepend_blurb, Icons.Outlined.FormatQuote),
     Relocator(R.string.rule_kind_relocator, R.string.rule_kind_relocator_blurb, Icons.Outlined.SwapHoriz),
@@ -199,6 +259,7 @@ fun Rule.icon(): ImageVector = when (this) {
     is Rule.ExtractXmlMetadata -> Icons.Outlined.Article
     is Rule.ExtractRegex -> Icons.Outlined.ContentPasteSearch
     is Rule.RegexReplace -> Icons.Outlined.FindReplace
+    is Rule.RegexReplaceMany -> Icons.Outlined.FormatListBulleted
     is Rule.StringAppend -> Icons.Outlined.FormatQuote
     is Rule.StringPrepend -> Icons.Outlined.FormatQuote
     is Rule.TagRelocator -> Icons.Outlined.SwapHoriz

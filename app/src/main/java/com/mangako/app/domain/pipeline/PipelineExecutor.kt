@@ -120,6 +120,28 @@ class PipelineExecutor(
                         StepResult(rule, input, out, emptyMap(), durationMs = msSince(started))
                     }
 
+                    is Rule.RegexReplaceMany -> {
+                        val opts = if (rule.ignoreCase) setOf(RegexOption.IGNORE_CASE) else emptySet()
+                        var working = input
+                        var hits = 0
+                        for (r in rule.replacements) {
+                            if (r.pattern.isEmpty()) continue
+                            val regex = Regex(r.pattern, opts)
+                            val replacement = interpolate(r.replacement, vars, escapeReplacement = true)
+                            val next = regex.replace(working, replacement)
+                            if (next != working) hits++
+                            working = next
+                        }
+                        StepResult(
+                            rule = rule,
+                            before = input,
+                            after = working,
+                            variableUpdates = emptyMap(),
+                            note = if (hits == 0) "no replacement matched" else "$hits / ${rule.replacements.size} matched",
+                            durationMs = msSince(started),
+                        )
+                    }
+
                     is Rule.StringAppend ->
                         StepResult(rule, input, input + interpolate(rule.text, vars, false), emptyMap(), durationMs = msSince(started))
 

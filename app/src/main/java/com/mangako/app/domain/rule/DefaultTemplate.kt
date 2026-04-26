@@ -99,19 +99,28 @@ object DefaultTemplate {
             )
 
             // 6. Emoji flags → [Language]. Mirrors lrr-preprocess.sh clean_name().
-            //    Grouped per target language so the pipeline stays compact.
-            add(Rule.RegexReplace(id = id(), label = "🇺🇸/🇬🇧 → [English]", pattern = "🇺🇸|🇬🇧", replacement = "[English]"))
-            add(Rule.RegexReplace(id = id(), label = "🇯🇵 → [Japanese]", pattern = "🇯🇵", replacement = "[Japanese]"))
-            add(Rule.RegexReplace(id = id(), label = "🇰🇷 → [Korean]", pattern = "🇰🇷", replacement = "[Korean]"))
-            add(Rule.RegexReplace(id = id(), label = "🇨🇳/🇹🇼 → [Chinese]", pattern = "🇨🇳|🇹🇼", replacement = "[Chinese]"))
-            add(Rule.RegexReplace(id = id(), label = "🇫🇷 → [French]", pattern = "🇫🇷", replacement = "[French]"))
-            add(Rule.RegexReplace(id = id(), label = "🇪🇸 → [Spanish]", pattern = "🇪🇸", replacement = "[Spanish]"))
-            add(Rule.RegexReplace(id = id(), label = "🇩🇪 → [German]", pattern = "🇩🇪", replacement = "[German]"))
-            add(Rule.RegexReplace(id = id(), label = "🇮🇹 → [Italian]", pattern = "🇮🇹", replacement = "[Italian]"))
-            add(Rule.RegexReplace(id = id(), label = "🇧🇷/🇵🇹 → [Portuguese]", pattern = "🇧🇷|🇵🇹", replacement = "[Portuguese]"))
-            add(Rule.RegexReplace(id = id(), label = "🇷🇺 → [Russian]", pattern = "🇷🇺", replacement = "[Russian]"))
-            add(Rule.RegexReplace(id = id(), label = "🇹🇭 → [Thai]", pattern = "🇹🇭", replacement = "[Thai]"))
-            add(Rule.RegexReplace(id = id(), label = "🇻🇳 → [Vietnamese]", pattern = "🇻🇳", replacement = "[Vietnamese]"))
+            //    Twelve pairs in one rule so this conceptual group doesn't fill
+            //    the pipeline list with twelve near-identical rows.
+            add(
+                Rule.RegexReplaceMany(
+                    id = id(),
+                    label = "Emoji flags → [Language]",
+                    replacements = listOf(
+                        Rule.RegexReplaceMany.Replacement("🇺🇸|🇬🇧", "[English]"),
+                        Rule.RegexReplaceMany.Replacement("🇯🇵", "[Japanese]"),
+                        Rule.RegexReplaceMany.Replacement("🇰🇷", "[Korean]"),
+                        Rule.RegexReplaceMany.Replacement("🇨🇳|🇹🇼", "[Chinese]"),
+                        Rule.RegexReplaceMany.Replacement("🇫🇷", "[French]"),
+                        Rule.RegexReplaceMany.Replacement("🇪🇸", "[Spanish]"),
+                        Rule.RegexReplaceMany.Replacement("🇩🇪", "[German]"),
+                        Rule.RegexReplaceMany.Replacement("🇮🇹", "[Italian]"),
+                        Rule.RegexReplaceMany.Replacement("🇧🇷|🇵🇹", "[Portuguese]"),
+                        Rule.RegexReplaceMany.Replacement("🇷🇺", "[Russian]"),
+                        Rule.RegexReplaceMany.Replacement("🇹🇭", "[Thai]"),
+                        Rule.RegexReplaceMany.Replacement("🇻🇳", "[Vietnamese]"),
+                    ),
+                ),
+            )
 
             // 7. Move event/convention tags to the very front: (COMIC…), (C96), (Comiket…), etc.
             //    Matches lrr-preprocess.sh's $event_regex list verbatim.

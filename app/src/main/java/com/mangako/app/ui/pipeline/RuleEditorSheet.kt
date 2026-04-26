@@ -24,6 +24,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -94,6 +95,7 @@ fun RuleEditorSheet(
                 is Rule.ExtractXmlMetadata -> MappingEditor(r) { draft = it }
                 is Rule.ExtractRegex -> ExtractRegexEditor(r) { draft = it }
                 is Rule.RegexReplace -> RegexEditor(r) { draft = it }
+                is Rule.RegexReplaceMany -> RegexManyEditor(r) { draft = it }
                 is Rule.StringAppend -> SingleTextEditor(
                     stringResource(R.string.editor_append_label), r.text,
                 ) { draft = r.copy(text = it) }
@@ -138,6 +140,74 @@ private fun SingleTextEditor(label: String, value: String, onChange: (String) ->
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+@Composable
+private fun RegexManyEditor(rule: Rule.RegexReplaceMany, onChange: (Rule.RegexReplaceMany) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            stringResource(R.string.editor_regex_many_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        rule.replacements.forEachIndexed { idx, pair ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = pair.pattern,
+                    onValueChange = { v ->
+                        val next = rule.replacements.toMutableList()
+                            .also { it[idx] = it[idx].copy(pattern = v) }
+                        onChange(rule.copy(replacements = next))
+                    },
+                    label = { Text(stringResource(R.string.editor_regex_pattern)) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = pair.replacement,
+                    onValueChange = { v ->
+                        val next = rule.replacements.toMutableList()
+                            .also { it[idx] = it[idx].copy(replacement = v) }
+                        onChange(rule.copy(replacements = next))
+                    },
+                    label = { Text(stringResource(R.string.editor_regex_replacement)) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                )
+                IconButton(onClick = {
+                    val next = rule.replacements.toMutableList().also { it.removeAt(idx) }
+                    onChange(rule.copy(replacements = next))
+                }) {
+                    Icon(Icons.Outlined.Delete, stringResource(R.string.rule_delete_cd))
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = {
+                onChange(
+                    rule.copy(
+                        replacements = rule.replacements + Rule.RegexReplaceMany.Replacement("", ""),
+                    ),
+                )
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Outlined.Add, null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.editor_regex_many_add))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = rule.ignoreCase,
+                onCheckedChange = { onChange(rule.copy(ignoreCase = it)) },
+            )
+            Text(stringResource(R.string.editor_case_insensitive))
+        }
+    }
 }
 
 @Composable
@@ -215,7 +285,7 @@ private fun TagRelocatorEditor(rule: Rule.TagRelocator, onChange: (Rule.TagReloc
                 readOnly = true,
                 label = { Text(stringResource(R.string.editor_relocator_move_to)) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(posExpanded) },
-                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
             )
             DropdownMenu(expanded = posExpanded, onDismissRequest = { posExpanded = false }) {
                 Rule.TagRelocator.Position.values().forEach { p ->
@@ -268,7 +338,7 @@ private fun ConditionalEditor(rule: Rule.ConditionalFormat, onChange: (Rule.Cond
                 readOnly = true,
                 label = { Text(stringResource(R.string.editor_condition_operator)) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(opExpanded) },
-                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
             )
             DropdownMenu(expanded = opExpanded, onDismissRequest = { opExpanded = false }) {
                 Condition.Op.values().forEach { op ->
@@ -433,6 +503,7 @@ private fun newRuleOfKind(kind: RuleKind): Rule {
             id = id, source = "summary", target = "language", pattern = "",
         )
         RuleKind.Regex -> Rule.RegexReplace(id = id, pattern = "", replacement = "")
+        RuleKind.RegexMany -> Rule.RegexReplaceMany(id = id, replacements = emptyList())
         RuleKind.Append -> Rule.StringAppend(id = id, text = "")
         RuleKind.Prepend -> Rule.StringPrepend(id = id, text = "")
         RuleKind.Relocator -> Rule.TagRelocator(id = id, pattern = "")

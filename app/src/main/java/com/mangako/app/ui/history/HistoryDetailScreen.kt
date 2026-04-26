@@ -18,7 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -65,7 +65,7 @@ fun HistoryDetailScreen(
                 title = { Text(stringResource(R.string.history_detail_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Outlined.ArrowBack, stringResource(R.string.history_detail_back_cd))
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.history_detail_back_cd))
                     }
                 },
             )
@@ -80,7 +80,7 @@ fun HistoryDetailScreen(
         }
         LazyColumn(
             modifier = Modifier.padding(inner).fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item { Header(rec.trail) }

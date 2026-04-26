@@ -69,6 +69,8 @@
     <string name="editor_extract_default">Default (if no match)</string>
     <string name="editor_extract_only_if_empty">Only write if %%%1$s%% is empty</string>
     <string name="editor_cleanws_trim">Also trim leading/trailing whitespace</string>
+    <string name="editor_regex_many_help">Each row is one find/replace pair. They run top to bottom against the working filename.</string>
+    <string name="editor_regex_many_add">Add a pair</string>
 
     <!-- Add rule / Import dialogs -->
     <string name="dialog_add_rule_title">Add rule</string>
@@ -85,6 +87,8 @@
     <string name="rule_kind_extract_regex_blurb">Pull a value out of one variable into another</string>
     <string name="rule_kind_regex">Find &amp; replace</string>
     <string name="rule_kind_regex_blurb">Match a pattern and rewrite it</string>
+    <string name="rule_kind_regex_many">Find &amp; replace (group)</string>
+    <string name="rule_kind_regex_many_blurb">Apply many find/replace pairs in a single step</string>
     <string name="rule_kind_append">Append text</string>
     <string name="rule_kind_append_blurb">Add text to the end of the filename</string>
     <string name="rule_kind_prepend">Prepend text</string>
@@ -110,6 +114,15 @@
     <string name="pipeline_preview_collapsed_label">Preview</string>
     <string name="pipeline_preview_expand_cd">Expand preview</string>
     <string name="pipeline_preview_collapse_cd">Collapse preview</string>
+    <string name="pipeline_preview_pick_file">Test with a real .cbz</string>
+    <string name="pipeline_preview_loading">Reading file…</string>
+    <string name="pipeline_preview_reset">Use sample</string>
+    <string name="pipeline_preview_source">Loaded from %1$s</string>
+
+    <!-- Reorder mode -->
+    <string name="pipeline_title_reorder">Reorder steps</string>
+    <string name="pipeline_reorder_enter">Reorder steps</string>
+    <string name="pipeline_reorder_done">Done reordering</string>
 
     <!-- Inbox -->
     <string name="inbox_scan_now_cd">Scan now</string>

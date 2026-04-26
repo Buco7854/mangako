@@ -102,6 +102,34 @@ sealed class Rule {
         override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
     }
 
+    /**
+     * A list of (pattern, replacement) regex substitutions applied in order to
+     * the working filename. Conceptually identical to N consecutive [RegexReplace]
+     * rules, but kept as a single user-visible step so a logically-grouped batch
+     * (e.g. "emoji flag → [Language] tag" mappings) doesn't fill up the pipeline
+     * list with N near-identical rows.
+     */
+    @Serializable
+    @SerialName("regex_replace_many")
+    data class RegexReplaceMany(
+        override val id: String,
+        override val enabled: Boolean = true,
+        override val label: String? = null,
+        val replacements: List<Replacement> = emptyList(),
+        val ignoreCase: Boolean = false,
+    ) : Rule() {
+        @Serializable
+        data class Replacement(val pattern: String, val replacement: String)
+
+        override fun displayName() = label ?: "Find & replace (group)"
+        override fun describe() = when (replacements.size) {
+            0 -> "(no replacements yet)"
+            1 -> "1 replacement"
+            else -> "${replacements.size} replacements"
+        }
+        override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
+    }
+
     @Serializable
     @SerialName("append")
     data class StringAppend(

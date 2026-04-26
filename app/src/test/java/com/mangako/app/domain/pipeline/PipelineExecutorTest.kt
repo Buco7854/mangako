@@ -166,6 +166,39 @@ class PipelineExecutorTest {
         assertTrue(out.steps.first().skipped)
     }
 
+    @Test fun `regex replace many applies all pairs in order`() {
+        val cfg = PipelineConfig(
+            rules = listOf(
+                Rule.RegexReplaceMany(
+                    id = "1",
+                    replacements = listOf(
+                        Rule.RegexReplaceMany.Replacement("🇺🇸|🇬🇧", "[English]"),
+                        Rule.RegexReplaceMany.Replacement("🇯🇵", "[Japanese]"),
+                        Rule.RegexReplaceMany.Replacement("\\s+\\.cbz$", ".cbz"),
+                    ),
+                ),
+            ),
+        )
+        val out = executor.run(cfg, PipelineExecutor.Input("[Artist] Title 🇯🇵 .cbz"))
+        assertEquals("[Artist] Title [Japanese].cbz", out.finalFilename)
+    }
+
+    @Test fun `regex replace many skips empty pattern entries`() {
+        val cfg = PipelineConfig(
+            rules = listOf(
+                Rule.RegexReplaceMany(
+                    id = "1",
+                    replacements = listOf(
+                        Rule.RegexReplaceMany.Replacement("", "ignored"),
+                        Rule.RegexReplaceMany.Replacement("foo", "bar"),
+                    ),
+                ),
+            ),
+        )
+        val out = executor.run(cfg, PipelineExecutor.Input("foo.cbz"))
+        assertEquals("bar.cbz", out.finalFilename)
+    }
+
     @Test fun `clean whitespace collapses repeated spaces and trims`() {
         val cfg = PipelineConfig(rules = listOf(Rule.CleanWhitespace(id = "1", trim = true)))
         val out = executor.run(cfg, PipelineExecutor.Input("   foo    bar   .cbz  "))

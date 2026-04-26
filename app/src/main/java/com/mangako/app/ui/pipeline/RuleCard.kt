@@ -2,7 +2,6 @@ package com.mangako.app.ui.pipeline
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -23,7 +23,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,25 +49,30 @@ import com.mangako.app.ui.format.humanTitle
 /**
  * One card per rule in the pipeline list.
  *
- * Tap the card body to edit. The ⋮ menu hosts Move up / Move down / Edit /
- * Delete — explicit reorder buttons replaced drag-to-reorder, which was easy
- * to trigger by accident while scrolling and confusing on long lists. The
- * downside is moving a rule from position 12 to position 1 takes 11 taps;
- * if that becomes painful we can add "Move to top / bottom" or a dedicated
- * reorder mode later.
+ * Layout is a single header row: [icon] [title + subtitle] [switch] [⋮ or
+ * drag handle]. The bottom-strip-with-state-text from the previous pass was
+ * dropped — it cut the card off awkwardly without adding information that
+ * the switch's own visual state didn't already carry.
+ *
+ * In normal mode the trailing slot is the ⋮ menu (Edit / Move up / Move
+ * down / Delete). In reorder mode (toggled from the screen's TopAppBar) the
+ * trailing slot becomes a drag handle and the menu/switch are hidden — that
+ * gives accidental-drag-while-scrolling a hard stop and lets users opt in
+ * when they actually want to reorder.
  */
 @Composable
 fun RuleCard(
     rule: Rule,
-    index: Int,
     isFirst: Boolean,
     isLast: Boolean,
+    reorderMode: Boolean,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     modifier: Modifier = Modifier,
+    dragHandle: @Composable (() -> Unit)? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -78,31 +82,47 @@ fun RuleCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
-        Column(Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onEdit)
-                    .padding(start = 12.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconBadge(rule = rule, position = index + 1)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        rule.humanTitle(),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (rule.enabled) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        rule.humanSubtitle(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .let { if (!reorderMode) it.clickable(onClick = onEdit) else it }
+                .padding(start = 12.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconBadge(rule)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    rule.humanTitle(),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (rule.enabled) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    rule.humanSubtitle(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (reorderMode) {
+                if (dragHandle != null) {
+                    dragHandle()
+                } else {
+                    // Fallback for callers that haven't wired a real drag handle.
+                    Icon(
+                        Icons.Outlined.DragHandle,
+                        contentDescription = stringResource(R.string.rule_reorder_cd),
+                        modifier = Modifier.padding(8.dp),
                     )
                 }
+            } else {
+                Switch(
+                    checked = rule.enabled,
+                    onCheckedChange = { onToggle() },
+                )
+                Spacer(Modifier.width(4.dp))
                 IconButton(onClick = { menuOpen = true }) {
                     Icon(Icons.Outlined.MoreVert, stringResource(R.string.rule_more_actions))
                 }
@@ -131,22 +151,6 @@ fun RuleCard(
                     )
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    if (rule.enabled) stringResource(R.string.rule_state_on)
-                    else stringResource(R.string.rule_state_off),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Switch(checked = rule.enabled, onCheckedChange = { onToggle() })
-            }
         }
     }
 
@@ -169,31 +173,24 @@ fun RuleCard(
     }
 }
 
-/**
- * Round badge with the rule's icon + the 1-based step number stacked. Same
- * visual identity used in the picker and (eventually) the audit log so users
- * recognise the same step type across screens.
- */
 @Composable
-private fun IconBadge(rule: Rule, position: Int) {
+private fun IconBadge(rule: Rule) {
     Surface(
         modifier = Modifier.size(40.dp).clip(CircleShape),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        color = if (rule.enabled) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (rule.enabled) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurfaceVariant,
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    imageVector = rule.icon(),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    position.toString(),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier.padding(8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = rule.icon(),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }

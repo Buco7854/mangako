@@ -44,9 +44,13 @@ class DirectoryScanWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val settings = settingsRepo.flow.first()
-        if (!settings.watcherEnabled || settings.watchFolderUris.isEmpty()) {
-            return@withContext Result.success()
-        }
+        // The "manual" flag is set by [runOnce]: the user explicitly tapped
+        // "Scan now", which is intent enough to override watcherEnabled. The
+        // periodic scheduler does NOT set it, so a watcher that's been
+        // explicitly turned off still stays off in the background.
+        val manual = inputData.getBoolean(KEY_MANUAL, false)
+        if (settings.watchFolderUris.isEmpty()) return@withContext Result.success()
+        if (!manual && !settings.watcherEnabled) return@withContext Result.success()
 
         for (folderUri in settings.watchFolderUris) {
             val folder = DocumentFile.fromTreeUri(applicationContext, Uri.parse(folderUri))
@@ -168,12 +172,19 @@ class DirectoryScanWorker @AssistedInject constructor(
             WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_NAME)
         }
 
+        /** Marker on the [WorkerParameters.inputData] that distinguishes a user-
+         *  initiated "Scan now" from the periodic scheduler. When set, the
+         *  scan runs even if the persistent watcher toggle is off. */
+        const val KEY_MANUAL = "manual"
+
         /** One-shot scan (UI "Scan now" button). */
         fun runOnce(context: Context) {
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "mangako_watcher_once",
                 ExistingWorkPolicy.REPLACE,
-                OneTimeWorkRequestBuilder<DirectoryScanWorker>().build(),
+                OneTimeWorkRequestBuilder<DirectoryScanWorker>()
+                    .setInputData(androidx.work.workDataOf(KEY_MANUAL to true))
+                    .build(),
             )
         }
     }

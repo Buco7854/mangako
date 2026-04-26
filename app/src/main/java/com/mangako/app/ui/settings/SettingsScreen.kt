@@ -39,7 +39,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.VisualTransformation
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -93,12 +98,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Section(stringResource(R.string.settings_section_server)) {
-                OutlinedTextField(
-                    value = settings.lanraragiUrl,
-                    onValueChange = viewModel::setUrl,
-                    label = { Text(stringResource(R.string.settings_base_url)) },
+                DebouncedTextField(
+                    initial = settings.lanraragiUrl,
+                    onCommit = viewModel::setUrl,
+                    label = stringResource(R.string.settings_base_url),
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
                 )
                 if (isInsecureUrl(settings.lanraragiUrl)) {
                     Text(
@@ -107,13 +111,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
-                OutlinedTextField(
-                    value = settings.lanraragiApiKey,
-                    onValueChange = viewModel::setApiKey,
-                    label = { Text(stringResource(R.string.settings_api_key)) },
+                DebouncedTextField(
+                    initial = settings.lanraragiApiKey,
+                    onCommit = viewModel::setApiKey,
+                    label = stringResource(R.string.settings_api_key),
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
                     supportingText = {
                         Text(
                             stringResource(R.string.settings_api_key_hint),
@@ -309,4 +312,66 @@ private fun SwitchRow(
         }
         Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
     }
+}
+
+/**
+ * Settings text field that decouples its display state from the persistence
+ * layer.
+ *
+ * The previous implementation bound the OutlinedTextField directly to
+ * `settings.lanraragiUrl` (a StateFlow value driven by DataStore). Each
+ * keystroke triggered an async DataStore write whose flow re-emit raced
+ * the recomposition and yanked the cursor back to the start of the field.
+ *
+ * Local state is the source of truth for what's drawn. The persisted value
+ * is observed only to *seed* the field once on first arrival — typically
+ * the moment DataStore finishes its initial read after the screen opens.
+ * After that, only the user's edits drive `local`, and we push to
+ * [onCommit] after a typing pause so the round-trip never lands on the
+ * typing hot path.
+ */
+@Composable
+private fun DebouncedTextField(
+    initial: String,
+    onCommit: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    supportingText: @Composable (() -> Unit)? = null,
+) {
+    var local by rememberSaveable { mutableStateOf(initial) }
+    // If the screen opened before DataStore had a chance to deliver the
+    // saved value, `initial` starts empty and arrives later. Seed exactly
+    // once on first non-empty arrival so the field reflects what's stored.
+    var seeded by rememberSaveable { mutableStateOf(initial.isNotEmpty()) }
+
+    LaunchedEffect(initial) {
+        if (!seeded && initial.isNotEmpty()) {
+            local = initial
+            seeded = true
+        }
+    }
+
+    LaunchedEffect(local) {
+        // Debounce: only commit after the user pauses typing for 300ms.
+        // Cancels-and-restarts on every keystroke because the LaunchedEffect
+        // is keyed on `local`.
+        delay(300)
+        if (local != initial) onCommit(local)
+    }
+
+    OutlinedTextField(
+        value = local,
+        onValueChange = {
+            local = it
+            // Any explicit edit "claims" the field so a late DataStore
+            // emission can't clobber the user's in-progress input.
+            seeded = true
+        },
+        label = { Text(label) },
+        modifier = modifier,
+        singleLine = true,
+        visualTransformation = visualTransformation,
+        supportingText = supportingText,
+    )
 }

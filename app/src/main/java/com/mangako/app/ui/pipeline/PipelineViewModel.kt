@@ -4,12 +4,12 @@ import android.content.Context
 import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Article
-import androidx.compose.material.icons.outlined.CallSplit
+import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.automirrored.outlined.CallSplit
+import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.ContentPasteSearch
 import androidx.compose.material.icons.outlined.FindReplace
-import androidx.compose.material.icons.outlined.FormatListBulleted
 import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -243,27 +243,27 @@ enum class RuleKind(
     @StringRes val blurbRes: Int,
     val icon: ImageVector,
 ) {
-    ExtractXml(R.string.rule_kind_extract_xml, R.string.rule_kind_extract_xml_blurb, Icons.Outlined.Article),
+    ExtractXml(R.string.rule_kind_extract_xml, R.string.rule_kind_extract_xml_blurb, Icons.AutoMirrored.Outlined.Article),
     ExtractRegex(R.string.rule_kind_extract_regex, R.string.rule_kind_extract_regex_blurb, Icons.Outlined.ContentPasteSearch),
     Regex(R.string.rule_kind_regex, R.string.rule_kind_regex_blurb, Icons.Outlined.FindReplace),
-    RegexMany(R.string.rule_kind_regex_many, R.string.rule_kind_regex_many_blurb, Icons.Outlined.FormatListBulleted),
+    RegexMany(R.string.rule_kind_regex_many, R.string.rule_kind_regex_many_blurb, Icons.AutoMirrored.Outlined.FormatListBulleted),
     Append(R.string.rule_kind_append, R.string.rule_kind_append_blurb, Icons.Outlined.FormatQuote),
     Prepend(R.string.rule_kind_prepend, R.string.rule_kind_prepend_blurb, Icons.Outlined.FormatQuote),
     Relocator(R.string.rule_kind_relocator, R.string.rule_kind_relocator_blurb, Icons.Outlined.SwapHoriz),
-    Conditional(R.string.rule_kind_conditional, R.string.rule_kind_conditional_blurb, Icons.Outlined.CallSplit),
+    Conditional(R.string.rule_kind_conditional, R.string.rule_kind_conditional_blurb, Icons.AutoMirrored.Outlined.CallSplit),
     CleanWs(R.string.rule_kind_cleanws, R.string.rule_kind_cleanws_blurb, Icons.Outlined.CleaningServices),
 }
 
 /** The visual identity shown in rule cards, the picker, and the audit log. */
 fun Rule.icon(): ImageVector = when (this) {
-    is Rule.ExtractXmlMetadata -> Icons.Outlined.Article
+    is Rule.ExtractXmlMetadata -> Icons.AutoMirrored.Outlined.Article
     is Rule.ExtractRegex -> Icons.Outlined.ContentPasteSearch
     is Rule.RegexReplace -> Icons.Outlined.FindReplace
-    is Rule.RegexReplaceMany -> Icons.Outlined.FormatListBulleted
+    is Rule.RegexReplaceMany -> Icons.AutoMirrored.Outlined.FormatListBulleted
     is Rule.StringAppend -> Icons.Outlined.FormatQuote
     is Rule.StringPrepend -> Icons.Outlined.FormatQuote
     is Rule.TagRelocator -> Icons.Outlined.SwapHoriz
-    is Rule.ConditionalFormat -> Icons.Outlined.CallSplit
+    is Rule.ConditionalFormat -> Icons.AutoMirrored.Outlined.CallSplit
     is Rule.CleanWhitespace -> Icons.Outlined.CleaningServices
 }
 

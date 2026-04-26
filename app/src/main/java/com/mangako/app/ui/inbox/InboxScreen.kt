@@ -34,10 +34,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -50,6 +54,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mangako.app.R
 import com.mangako.app.work.DirectoryScanWorker
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
@@ -62,18 +67,30 @@ fun InboxScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val scanningMsg = stringResource(R.string.inbox_scanning_started)
+    val scanDisabledMsg = stringResource(R.string.inbox_scanning_disabled)
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.nav_inbox), fontWeight = FontWeight.SemiBold) },
                 actions = {
-                    IconButton(onClick = { DirectoryScanWorker.runOnce(ctx) }) {
+                    IconButton(onClick = {
+                        if (!state.setup.foldersConfigured) {
+                            scope.launch { snackbar.showSnackbar(scanDisabledMsg) }
+                        } else {
+                            DirectoryScanWorker.runOnce(ctx)
+                            scope.launch { snackbar.showSnackbar(scanningMsg) }
+                        }
+                    }) {
                         Icon(Icons.Outlined.Refresh, stringResource(R.string.inbox_scan_now_cd))
                     }
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbar) },
     ) { inner ->
         Column(Modifier.padding(inner).fillMaxSize()) {
             if (!state.setup.isComplete) {

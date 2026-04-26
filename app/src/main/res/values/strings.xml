@@ -129,6 +129,8 @@
 
     <!-- Inbox -->
     <string name="inbox_scan_now_cd">Scan now</string>
+    <string name="inbox_scanning_started">Scanning watched folders…</string>
+    <string name="inbox_scanning_disabled">Add a watched folder in Settings first</string>
     <string name="inbox_empty_title">Nothing waiting</string>
     <string name="inbox_empty_subtitle">When new .cbz files appear in your watched folders, they\'ll show up here for review.</string>
     <string name="inbox_pending_count">%1$d waiting for review</string>

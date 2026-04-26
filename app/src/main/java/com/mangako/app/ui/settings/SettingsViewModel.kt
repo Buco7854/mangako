@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -45,7 +46,21 @@ class SettingsViewModel @Inject constructor(
         if (v) DirectoryScanWorker.schedule(context) else DirectoryScanWorker.cancel(context)
     }
 
-    fun addFolder(uri: String) = viewModelScope.launch { repo.addWatchFolder(uri) }
+    /**
+     * Adds the folder and, if this is the very first watched folder, also
+     * enables the background watcher and schedules its periodic worker so
+     * the user's first download Just Works. Adding a folder without the
+     * watcher running is the most common 'why didn't anything happen?'
+     * trap; opting them in here matches the implicit intent.
+     */
+    fun addFolder(uri: String) = viewModelScope.launch {
+        val before = repo.flow.first()
+        repo.addWatchFolder(uri)
+        if (before.watchFolderUris.isEmpty() && !before.watcherEnabled) {
+            repo.update { it.copy(watcherEnabled = true) }
+            DirectoryScanWorker.schedule(context)
+        }
+    }
 
     /**
      * Removes [uri] from the watch list and releases the persistable URI

@@ -32,13 +32,10 @@ data class PendingFile(
      *  for not-yet-processed rows. Lets the Inbox/Processed view show the
      *  truth without a fuzzy join against history-by-original-name. */
     val finalName: String? = null,
-    /** Optional user-set filename fed into the pipeline as the starting
-     *  name. Lets a bad detection be corrected before Process is tapped. */
-    val nameOverride: String? = null,
-    /** Optional user-set ComicInfo variable overrides. Merged on top of
-     *  whatever ExtractXmlMetadata reads from the archive, keyed by the
-     *  variable name (e.g. "series", "title", "writer"). Empty when no
-     *  overrides are set. */
+    /** User-set pipeline-variable overrides (title, writer, event,
+     *  extra_tags, etc.). Merged on top of ExtractXmlMetadata's read so
+     *  the user can fix bad detection without re-encoding the file.
+     *  Empty when no overrides are set. */
     val metadataOverrides: Map<String, String> = emptyMap(),
 )
 
@@ -111,20 +108,24 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
         dao.setStatusAndFinal(id, PendingStatus.DONE.name, finalName)
 
     /**
-     * Persist a user-set filename for [id]. Empty / blank input clears
-     * the override (so the pipeline's default rename takes over again).
-     */
-    suspend fun setNameOverride(id: String, override: String?) =
-        dao.setNameOverride(id, override?.takeIf { it.isNotBlank() })
-
-    /**
-     * Persist user-set ComicInfo variable overrides for [id]. Empty
+     * Persist user-set pipeline-variable overrides for [id]. Empty
      * map clears all overrides. Empty values inside the map are
      * dropped before persisting — a blank override means "don't
      * override" rather than "set to empty".
+     *
+     * %extra_tags% is conventionally stored with a leading space (it
+     * gets interpolated immediately after "[%language%]" in the build
+     * template, so the leading space provides the gap). User input
+     * from the edit sheet typically arrives as "[Decensored]" without
+     * that space — normalise here so users don't have to think about
+     * whitespace conventions.
      */
     suspend fun setMetadataOverrides(id: String, overrides: Map<String, String>) {
-        val cleaned = overrides.filterValues { it.isNotBlank() }
+        val cleaned = overrides
+            .filterValues { it.isNotBlank() }
+            .mapValues { (k, v) ->
+                if (k == "extra_tags" && !v.startsWith(" ")) " $v" else v
+            }
         val json = if (cleaned.isEmpty()) null
         else OverrideJson.encodeToString(OverrideMapSerializer, cleaned)
         dao.setMetadataOverridesJson(id, json)
@@ -151,7 +152,6 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
         folderUri = folderUri,
         status = runCatching { PendingStatus.valueOf(status) }.getOrDefault(PendingStatus.PENDING),
         finalName = finalName,
-        nameOverride = nameOverride,
         metadataOverrides = metadataOverridesJson?.let {
             runCatching { OverrideJson.decodeFromString(OverrideMapSerializer, it) }.getOrDefault(emptyMap())
         } ?: emptyMap(),

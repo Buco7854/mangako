@@ -156,8 +156,8 @@ fun InboxScreen(
                         onReject = { viewModel.reject(item.file) },
                         onReprocess = { viewModel.reprocess(item.file) },
                         onForget = { viewModel.forget(item.file) },
-                        onSaveEdit = { name, metadata ->
-                            viewModel.saveEdit(item.file, name, metadata)
+                        onSaveOverrides = { metadata ->
+                            viewModel.saveOverrides(item.file, metadata)
                         },
                     )
                 }
@@ -335,34 +335,30 @@ private fun InboxCard(
     onReject: () -> Unit,
     onReprocess: () -> Unit,
     onForget: () -> Unit,
-    onSaveEdit: (name: String?, metadata: Map<String, String>) -> Unit,
+    onSaveOverrides: (Map<String, String>) -> Unit,
 ) {
     when (filter) {
-        InboxViewModel.Filter.PENDING -> PendingCard(item, onApprove, onReject, onSaveEdit)
+        InboxViewModel.Filter.PENDING -> PendingCard(item, onApprove, onReject, onSaveOverrides)
         InboxViewModel.Filter.PROCESSED -> ProcessedCard(item, onForget)
         InboxViewModel.Filter.IGNORED -> IgnoredCard(item, onReprocess, onForget)
     }
 }
 
 /** The full-detail card — rename preview, size, timestamp, decide buttons.
- *  Tapping the pencil opens an edit sheet so the user can fix a bad
- *  detection before tapping Process; the edited filename becomes the
- *  pipeline's input filename, and any ComicInfo overrides feed into
- *  the pipeline's variable map. */
+ *  Tapping the pencil opens an edit sheet so the user can override the
+ *  pipeline variables (title, series, writer, language, event tag,
+ *  trailing tags). Detection itself is read-only — the upload name is
+ *  rebuilt from the variables, so editing those is what controls the
+ *  output. */
 @Composable
 private fun PendingCard(
     item: InboxViewModel.InboxItem,
     onApprove: () -> Unit,
     onReject: () -> Unit,
-    onSaveEdit: (name: String?, metadata: Map<String, String>) -> Unit,
+    onSaveOverrides: (Map<String, String>) -> Unit,
 ) {
     val file = item.file
     var editing by remember(file.id) { mutableStateOf(false) }
-    // The displayed source name is the user's override when set,
-    // otherwise the detected filename. Both flow through the same
-    // pipeline preview, so the "Renames to" line always reflects what
-    // Process will actually upload.
-    val displayedName = file.nameOverride?.takeIf { it.isNotBlank() } ?: file.name
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -371,7 +367,7 @@ private fun PendingCard(
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    if (file.nameOverride?.isNotBlank() == true) {
+                    if (file.metadataOverrides.isNotEmpty()) {
                         Text(
                             stringResource(R.string.inbox_edited_label),
                             style = MaterialTheme.typography.labelSmall,
@@ -380,24 +376,13 @@ private fun PendingCard(
                         Spacer(Modifier.height(2.dp))
                     }
                     Text(
-                        displayedName,
+                        file.name,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         fontFamily = FontFamily.Monospace,
                     )
-                    if (file.nameOverride?.isNotBlank() == true && file.nameOverride != file.name) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            stringResource(R.string.inbox_original_was, file.name),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    }
                 }
                 IconButton(onClick = { editing = true }) {
                     Icon(
@@ -406,7 +391,7 @@ private fun PendingCard(
                     )
                 }
             }
-            if (item.previewedFinal != displayedName) {
+            if (item.previewedFinal != file.name) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     stringResource(R.string.inbox_rename_to),
@@ -439,55 +424,55 @@ private fun PendingCard(
 
     if (editing) {
         EditDetectionSheet(
-            initialName = displayedName,
             initialMetadata = file.metadataOverrides,
-            hasAnyOverride = !file.nameOverride.isNullOrBlank() || file.metadataOverrides.isNotEmpty(),
+            hasAnyOverride = file.metadataOverrides.isNotEmpty(),
             onDismiss = { editing = false },
-            onSave = { newName, metadata ->
+            onSave = { metadata ->
                 editing = false
-                // Treat blank or unchanged-from-detected-name as "no
-                // filename override" so the row reverts to its
-                // detected name without a stale override flag.
-                val nameOverride = newName.takeIf { it.isNotBlank() && it != file.name }
-                onSaveEdit(nameOverride, metadata)
+                onSaveOverrides(metadata)
             },
             onReset = {
                 editing = false
-                onSaveEdit(null, emptyMap())
+                onSaveOverrides(emptyMap())
             },
         )
     }
 }
 
 /**
- * Bottom sheet that lets the user override the detected filename and any
- * ComicInfo variables before processing. ComicInfo overrides win over
- * what's actually in the .cbz at pipeline time, so a typo or a missing
- * &lt;Series&gt; tag can be fixed once on the card without re-encoding
- * the file.
+ * Bottom sheet that lets the user override the pipeline variables
+ * before processing. Whatever the user types here wins over what
+ * ExtractXmlMetadata reads from the archive (and over what detection
+ * extracts from the filename, for `event` / `extra_tags`).
  *
- * Empty metadata fields mean "don't override" — they're filtered out
- * before persisting so the saved override map only contains values the
- * user actually typed.
+ * The fields cover everything the default LANraragi Standard pipeline
+ * reads:
+ *   - title / series / writer / language / number / genre — straight
+ *     from ComicInfo.xml
+ *   - event — convention tag the build template prefixes
+ *     ("(C96) [Author] …")
+ *   - extra_tags — release tags after the language bracket on the
+ *     rebuilt filename ("…[English] [Decensored] [v2].cbz")
+ *
+ * Empty fields mean "don't override". Each field has a placeholder
+ * showing a realistic example so users can see what shape Mangako
+ * expects.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditDetectionSheet(
-    initialName: String,
     initialMetadata: Map<String, String>,
     hasAnyOverride: Boolean,
     onDismiss: () -> Unit,
-    onSave: (name: String, metadata: Map<String, String>) -> Unit,
+    onSave: (Map<String, String>) -> Unit,
     onReset: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var name by remember { mutableStateOf(initialName) }
-    // Each ComicInfo field gets its own piece of state, pre-filled with
-    // the user's existing override (if any) — we don't show what the
-    // file's actual ComicInfo currently holds because we haven't
-    // extracted it yet at detection time, and reading it on demand
-    // would block the UI on a zip parse.
-    val keys = listOf("title", "series", "writer", "language", "number", "genre")
+    // Pre-fill each field with the user's existing override (if any).
+    // We don't show what the .cbz's ComicInfo currently holds because
+    // detection hasn't extracted it yet — reading it on demand would
+    // block the UI on a zip parse.
+    val keys = listOf("title", "series", "writer", "language", "number", "genre", "event", "extra_tags")
     val labels = mapOf(
         "title" to stringResource(R.string.inbox_edit_metadata_title),
         "series" to stringResource(R.string.inbox_edit_metadata_series),
@@ -495,9 +480,26 @@ private fun EditDetectionSheet(
         "language" to stringResource(R.string.inbox_edit_metadata_language),
         "number" to stringResource(R.string.inbox_edit_metadata_number),
         "genre" to stringResource(R.string.inbox_edit_metadata_genre),
+        "event" to stringResource(R.string.inbox_edit_metadata_event),
+        "extra_tags" to stringResource(R.string.inbox_edit_metadata_extra_tags),
+    )
+    val placeholders = mapOf(
+        "title" to stringResource(R.string.inbox_edit_metadata_title_placeholder),
+        "series" to stringResource(R.string.inbox_edit_metadata_series_placeholder),
+        "writer" to stringResource(R.string.inbox_edit_metadata_writer_placeholder),
+        "language" to stringResource(R.string.inbox_edit_metadata_language_placeholder),
+        "number" to stringResource(R.string.inbox_edit_metadata_number_placeholder),
+        "genre" to stringResource(R.string.inbox_edit_metadata_genre_placeholder),
+        "event" to stringResource(R.string.inbox_edit_metadata_event_placeholder),
+        "extra_tags" to stringResource(R.string.inbox_edit_metadata_extra_tags_placeholder),
     )
     val fieldValues = remember(initialMetadata) {
-        keys.associateWith { mutableStateOf(initialMetadata[it].orEmpty()) }
+        keys.associateWith { mutableStateOf(initialMetadata[it].orEmpty().let {
+            // %extra_tags% is conventionally stored with leading
+            // space; strip it here so the user sees a clean
+            // "[Decensored]" rather than " [Decensored]".
+            if (it.startsWith(" ")) it.trimStart() else it
+        }) }
     }
 
     ModalBottomSheet(
@@ -528,39 +530,13 @@ private fun EditDetectionSheet(
             )
 
             Spacer(Modifier.height(16.dp))
-            Text(
-                stringResource(R.string.inbox_edit_section_filename),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                singleLine = true,
-                label = { Text(stringResource(R.string.inbox_edit_filename_label)) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(Modifier.height(20.dp))
-            Text(
-                stringResource(R.string.inbox_edit_section_metadata),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                stringResource(R.string.inbox_edit_metadata_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
             keys.forEach { k ->
                 val state = fieldValues.getValue(k)
                 OutlinedTextField(
                     value = state.value,
                     onValueChange = { state.value = it },
                     label = { Text(labels.getValue(k)) },
+                    placeholder = { Text(placeholders.getValue(k)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 )
@@ -578,7 +554,6 @@ private fun EditDetectionSheet(
                     Text(stringResource(R.string.inbox_edit_cancel))
                 }
                 Button(
-                    enabled = name.isNotBlank(),
                     onClick = {
                         val metadata = keys
                             .mapNotNull { k ->
@@ -586,7 +561,7 @@ private fun EditDetectionSheet(
                                 if (v.isEmpty()) null else k to v
                             }
                             .toMap()
-                        onSave(name.trim(), metadata)
+                        onSave(metadata)
                     },
                 ) {
                     Text(stringResource(R.string.inbox_edit_save))

@@ -116,14 +116,13 @@ class InboxViewModel @Inject constructor(
         UiState(
             filter = filter.value,
             items = items.map { p ->
-                // Preview the pipeline against whichever input the worker
-                // will actually feed it: the user's override when set,
-                // otherwise the detected filename. Keeps the Pending
-                // card's "Renames to" hint truthful after an edit.
-                val pipelineInput = p.nameOverride?.takeIf { it.isNotBlank() } ?: p.name
+                // Preview the pipeline as the worker will run it —
+                // detected filename in, user metadata overrides
+                // merged on top. Keeps the Pending card's "Renames
+                // to" hint truthful after an edit.
                 InboxItem(
                     file = p,
-                    previewedFinal = previewRename(config, pipelineInput),
+                    previewedFinal = previewRename(config, p.name, p.metadataOverrides),
                     recordedFinal = p.finalName ?: historyFinalByOriginal[p.name],
                 )
             },
@@ -178,17 +177,11 @@ class InboxViewModel @Inject constructor(
         Notifications.cancelDetected(context, file.id)
     }
 
-    /** Persist a user-chosen filename for a Pending row. Pass null/blank
-     *  to clear the override and let the pipeline rename the file. */
-    fun setNameOverride(file: PendingFile, name: String?) = viewModelScope.launch {
-        pendingRepo.setNameOverride(file.id, name)
-    }
-
-    /** Persist a full edit-detection payload — both the filename
-     *  override and the ComicInfo variable overrides — in one shot. The
-     *  worker reads both back when the user later taps Process. */
-    fun saveEdit(file: PendingFile, name: String?, metadata: Map<String, String>) = viewModelScope.launch {
-        pendingRepo.setNameOverride(file.id, name)
+    /** Persist edit-detection overrides — pipeline variables that
+     *  win over what ExtractXmlMetadata reads from the file. The
+     *  worker reads them back when the user later taps Process. Pass
+     *  an empty map to clear all overrides. */
+    fun saveOverrides(file: PendingFile, metadata: Map<String, String>) = viewModelScope.launch {
         pendingRepo.setMetadataOverrides(file.id, metadata)
     }
 
@@ -203,13 +196,19 @@ class InboxViewModel @Inject constructor(
     /**
      * Best-effort dry run of the pipeline against [name]. The real run inside
      * [ProcessCbzWorker] also extracts ComicInfo metadata; we don't have that
-     * here, so any rule that depends on real metadata will simply not fire and
-     * the preview will reflect what would happen if the file had no metadata —
-     * still useful as a "this is what the rename rules would do" indicator.
+     * here, so we feed it whatever the user typed into the Inbox edit sheet
+     * as the metadata map. Rules that depend on metadata Mihon embedded
+     * (and the user didn't override) won't fire, but anything driven by an
+     * override will preview correctly — which is the case the user most
+     * cares about ("did my edit take?").
      */
-    private fun previewRename(config: PipelineConfig, name: String): String =
+    private fun previewRename(
+        config: PipelineConfig,
+        name: String,
+        overrides: Map<String, String>,
+    ): String =
         if (config.rules.isEmpty()) name
         else PipelineExecutor()
-            .run(config, PipelineExecutor.Input(originalFilename = name))
+            .run(config, PipelineExecutor.Input(originalFilename = name, metadata = overrides))
             .finalFilename
 }

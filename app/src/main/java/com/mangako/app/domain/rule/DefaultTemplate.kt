@@ -106,6 +106,11 @@ object DefaultTemplate {
             //    in %event% so the build template can prefix it back
             //    onto the canonical name. Mirrors lrr-preprocess.sh's
             //    $event_regex list verbatim.
+            //
+            //    onlyIfEmpty=true so a user-supplied %event% from the
+            //    Inbox edit-detection sheet wins over what's in the
+            //    filename. Without that override, the detection
+            //    extraction is the only source of this variable.
             add(
                 Rule.ExtractRegex(
                     id = id(),
@@ -115,7 +120,7 @@ object DefaultTemplate {
                     pattern = "\\((?:COMIC[^)]*|C\\d+|Comiket[^)]*|COMITIA[^)]*|Reitaisai[^)]*|SPARK[^)]*|GATE[^)]*|Futaket[^)]*|Shuuki[^)]*|Natsu[^)]*|Fuyu[^)]*)\\)",
                     group = 0,
                     ignoreCase = false,
-                    onlyIfEmpty = false,
+                    onlyIfEmpty = true,
                     defaultValue = "",
                 )
             )
@@ -153,19 +158,31 @@ object DefaultTemplate {
                 )
             )
 
-            // 6. Initialise %extra_tags% to empty so the build
-            //    template always has a defined value. ExtractRegex
-            //    below skips when both the capture and the default
-            //    value are blank (its "no match and no default"
-            //    short-circuit), and we don't want the literal
-            //    "%extra_tags%" leaking into the filename for files
-            //    without trailing tags.
+            // 6. Initialise %extra_tags% to empty when nothing else
+            //    has set it. ExtractRegex below skips when both the
+            //    capture and the default value are blank (its "no
+            //    match and no default" short-circuit), and we don't
+            //    want the literal "%extra_tags%" leaking into the
+            //    filename for files without trailing tags. Wrapped in
+            //    a "only if empty" guard so a user-supplied override
+            //    from the Inbox edit-detection sheet survives.
             add(
-                Rule.SetVariable(
+                Rule.ConditionalFormat(
                     id = id(),
                     label = "Initialise %extra_tags%",
-                    target = "extra_tags",
-                    value = "",
+                    condition = Condition(
+                        variable = "extra_tags",
+                        op = Condition.Op.IS_EMPTY,
+                        value = "",
+                    ),
+                    thenRules = listOf(
+                        Rule.SetVariable(
+                            id = id(),
+                            label = "Default %extra_tags% to empty",
+                            target = "extra_tags",
+                            value = "",
+                        ),
+                    ),
                 )
             )
 
@@ -178,6 +195,10 @@ object DefaultTemplate {
             //    between "[<lang>]" and ".cbz" verbatim, including
             //    any leading space, so the build template can
             //    interpolate it as-is.
+            //
+            //    onlyIfEmpty=true so a user-supplied %extra_tags%
+            //    from the Inbox edit-detection sheet wins over what
+            //    detection extracted.
             add(
                 Rule.ExtractRegex(
                     id = id(),
@@ -187,7 +208,7 @@ object DefaultTemplate {
                     pattern = "\\[(?:$LANG_ALT)\\](.*)\\.cbz$",
                     group = 1,
                     ignoreCase = true,
-                    onlyIfEmpty = false,
+                    onlyIfEmpty = true,
                     defaultValue = "",
                 )
             )

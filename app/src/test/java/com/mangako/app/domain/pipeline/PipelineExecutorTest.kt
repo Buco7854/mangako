@@ -302,6 +302,27 @@ class PipelineExecutorTest {
         assertEquals("(C96) [Artist] Title [Japanese].cbz", out.finalFilename)
     }
 
+    @Test fun `default template reads emoji flag from Title when ComicInfo has no language`() {
+        // Some doujin sources tag the title with a flag emoji and
+        // leave <LanguageISO> empty. The emoji-flag fallback fires
+        // against %title% (the new authoritative source after the
+        // series→title promotion) and beats the Summary fallback's
+        // English default.
+        val cfg = DefaultTemplate.lanraragiStandard()
+        val out = executor.run(
+            cfg,
+            PipelineExecutor.Input(
+                originalFilename = "Chapter.cbz",
+                metadata = mapOf(
+                    "title" to "Title 🇯🇵",
+                    "series" to "Series",
+                    "writer" to "Artist",
+                ),
+            ),
+        )
+        assertEquals("Japanese", out.variables["language"])
+    }
+
     @Test fun `default template falls back to English when ComicInfo has no language`() {
         // No language anywhere and Title carries no [Lang] bracket;
         // the Summary fallback's defaultValue=English fires last

@@ -100,7 +100,47 @@ object DefaultTemplate {
                 )
             )
 
-            // 4. Language fallback: pull the language out of
+            // 4. Language fallback: detect a flag emoji in
+            //    %title%. Some doujin sources tag with "🇯🇵" or
+            //    "🇬🇧" instead of populating <LanguageISO>; by
+            //    this point Phase 2 has consolidated the rich
+            //    string into %title% (whether it lived in <Title>
+            //    or got promoted from <Series>) so this catches
+            //    the emoji from either source. Outer condition
+            //    guards so this only fires when nothing earlier
+            //    set %language%; placed before the Summary
+            //    fallback so its English default doesn't pre-empt
+            //    the emoji read.
+            add(
+                Rule.ConditionalFormat(
+                    id = id(),
+                    label = "Language fallback (from emoji flag)",
+                    condition = Condition(
+                        variable = "language",
+                        op = Condition.Op.IS_EMPTY,
+                        value = "",
+                    ),
+                    thenRules = listOf(
+                        emojiToLanguage("🇺🇸", "English"),
+                        emojiToLanguage("🇬🇧", "English"),
+                        emojiToLanguage("🇯🇵", "Japanese"),
+                        emojiToLanguage("🇰🇷", "Korean"),
+                        emojiToLanguage("🇨🇳", "Chinese"),
+                        emojiToLanguage("🇹🇼", "Chinese"),
+                        emojiToLanguage("🇫🇷", "French"),
+                        emojiToLanguage("🇪🇸", "Spanish"),
+                        emojiToLanguage("🇩🇪", "German"),
+                        emojiToLanguage("🇮🇹", "Italian"),
+                        emojiToLanguage("🇧🇷", "Portuguese"),
+                        emojiToLanguage("🇵🇹", "Portuguese"),
+                        emojiToLanguage("🇷🇺", "Russian"),
+                        emojiToLanguage("🇹🇭", "Thai"),
+                        emojiToLanguage("🇻🇳", "Vietnamese"),
+                    ),
+                )
+            )
+
+            // 5. Language fallback: pull the language out of
             //    <Summary> when nothing earlier set it. Matches
             //    "Language: English" or "Languages: english".
             //    Defaults to English so the filename always gets a
@@ -119,7 +159,7 @@ object DefaultTemplate {
                 )
             )
 
-            // 5. Extract event / convention tag — "(C96)",
+            // 6. Extract event / convention tag — "(C96)",
             //    "(Comiket 102)", "(COMITIA 145)" — from %title%.
             //    Mirrors lrr-preprocess.sh's $event_regex list
             //    verbatim. onlyIfEmpty=true so a user-supplied
@@ -138,7 +178,7 @@ object DefaultTemplate {
                 )
             )
 
-            // 6. Compute %event_prefix% — "(C96) " (with trailing
+            // 7. Compute %event_prefix% — "(C96) " (with trailing
             //    space) when an event tag was found, otherwise
             //    empty. Lets the build template stay a single
             //    string: "%event_prefix%[%writer%] …" with no
@@ -171,7 +211,7 @@ object DefaultTemplate {
                 )
             )
 
-            // 7. Initialise %extra_tags% to empty when nothing else
+            // 8. Initialise %extra_tags% to empty when nothing else
             //    has set it. ExtractRegex below skips when both the
             //    capture and the default value are blank (its "no
             //    match and no default" short-circuit), and we don't
@@ -199,7 +239,7 @@ object DefaultTemplate {
                 )
             )
 
-            // 8. Pull trailing tags after the language bracket out
+            // 9. Pull trailing tags after the language bracket out
             //    of %title%. For "[Author] Real Title [English]
             //    [Project Valvrein]", this captures " [Project
             //    Valvrein]" — the translator/group tag that
@@ -224,7 +264,7 @@ object DefaultTemplate {
             // Phase 4: Clean %title%
             // ─────────────────────────────────────────────
 
-            // 9. Strip brackets out of %title% so it holds just the
+            // 10. Strip brackets out of %title% so it holds just the
             //    human title meat. Drops a leading "(C96) " event
             //    tag and "[Artist]" tag, plus any trailing
             //    "[Lang] [Group]" brackets. Falls back to %title%
@@ -248,7 +288,7 @@ object DefaultTemplate {
             // Phase 5: Manhwa enhancements
             // ─────────────────────────────────────────────
 
-            // 10. Manhwa: append " Ch %number%" so the title
+            // 11. Manhwa: append " Ch %number%" so the title
             //     carries chapter granularity ("My Series Ch 39").
             //     The filename template below picks up %title%
             //     verbatim, so this is the single place that
@@ -274,7 +314,7 @@ object DefaultTemplate {
                 )
             )
 
-            // 11. Manhwa: ensure "[Manhwa]" lives in %extra_tags%
+            // 12. Manhwa: ensure "[Manhwa]" lives in %extra_tags%
             //     when genre says manhwa AND it isn't there
             //     already. Routing the manhwa decision through
             //     %extra_tags% automatically dedupes a [Manhwa]
@@ -315,7 +355,7 @@ object DefaultTemplate {
             // Phase 6: Build the filename
             // ─────────────────────────────────────────────
 
-            // 12. Compose the final filename in one place. Setting
+            // 13. Compose the final filename in one place. Setting
             //     %__filename__% mutates the working filename
             //     string, so this single template is what becomes
             //     the upload name. Everything before this step
@@ -338,7 +378,7 @@ object DefaultTemplate {
             // Phase 7: Hygiene
             // ─────────────────────────────────────────────
 
-            // 13. Strip Windows-unsafe filename chars so LANraragi's
+            // 14. Strip Windows-unsafe filename chars so LANraragi's
             //     client-side dedup never chokes on a stray colon
             //     (and the volume stays portable to NTFS-mounted
             //     backups). Only runs against the filename string —
@@ -354,7 +394,7 @@ object DefaultTemplate {
                 )
             )
 
-            // 14. Collapse runs of whitespace + trim. Catches the
+            // 15. Collapse runs of whitespace + trim. Catches the
             //     empty event-prefix case where the template leaves
             //     a leading space, plus any double spaces from the
             //     sanitise step removing illegal chars from inside
@@ -365,7 +405,7 @@ object DefaultTemplate {
             // Phase 8: Sync ComicInfo
             // ─────────────────────────────────────────────
 
-            // 15. Write %title% into ComicInfo's <Title> and clear
+            // 16. Write %title% into ComicInfo's <Title> and clear
             //     <Series>. Without the Title write, LANraragi's
             //     auto-extraction keeps showing Mihon's "Chapter
             //     39"; without the Series clear it groups uploads
@@ -384,5 +424,29 @@ object DefaultTemplate {
                 ),
             )
         },
+    )
+
+    /** Single emoji-flag → language ConditionalFormat used by the
+     *  language-fallback chain. Tests %title% for [emoji]; if
+     *  present, sets %language% to [lang]. By the time this fires,
+     *  Phase 2 has already promoted <Series> into %title% when the
+     *  upstream Title was generic, so this catches a flag emoji
+     *  living in either field. Kept flat (not a Group) so users
+     *  can spot and remove individual mappings. */
+    private fun emojiToLanguage(emoji: String, lang: String): Rule = Rule.ConditionalFormat(
+        id = id(),
+        label = "$emoji → $lang",
+        condition = Condition(
+            variable = "title",
+            op = Condition.Op.CONTAINS,
+            value = emoji,
+        ),
+        thenRules = listOf(
+            Rule.SetVariable(
+                id = id(),
+                target = "language",
+                value = lang,
+            ),
+        ),
     )
 }

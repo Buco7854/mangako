@@ -1,13 +1,17 @@
 package com.mangako.app.domain.cbz
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
+import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 /**
@@ -17,6 +21,78 @@ import java.util.zip.ZipOutputStream
  * ComicInfo.xml bytes.
  */
 class CbzProcessor {
+
+    /**
+     * Detection-time extract: peek inside the .cbz, pull ComicInfo.xml
+     * variables AND the first image bytes in a single streaming pass.
+     * Used by the watcher when a new file shows up so the Inbox card
+     * can render with a real thumbnail and a pipeline-simulated title
+     * before the user ever taps Process.
+     *
+     * Streaming (ZipInputStream) instead of random-access (ZipFile)
+     * means we don't have to copy the .cbz to local cache first —
+     * scans of cloud-mounted folders stay snappy.
+     */
+    data class DetectionInfo(
+        val metadata: Map<String, String>,
+        val firstImage: ByteArray?,
+    )
+
+    fun extractDetectionInfo(input: InputStream): DetectionInfo {
+        var metadata: Map<String, String>? = null
+        var firstImage: ByteArray? = null
+        try {
+            ZipInputStream(BufferedInputStream(input)).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    val name = entry.name
+                    when {
+                        metadata == null && name.equals(COMIC_INFO_NAME, ignoreCase = true) -> {
+                            metadata = runCatching { parseComicInfo(zip) }.getOrDefault(emptyMap())
+                        }
+                        firstImage == null && isImageEntry(name) -> {
+                            firstImage = runCatching { zip.readBytes() }.getOrNull()
+                        }
+                    }
+                    if (metadata != null && firstImage != null) break
+                }
+            }
+        } catch (_: Throwable) {
+            // Fall through with whatever we managed to read.
+        }
+        return DetectionInfo(metadata.orEmpty(), firstImage)
+    }
+
+    /**
+     * Decode [imageBytes] (the first-page image of a .cbz), scale it
+     * down to a thumbnail-friendly width, and write the recompressed
+     * JPEG to [outFile]. Returns true on success. Used by the watcher
+     * so each Inbox card can show a small cover preview without
+     * dragging around the original 1-3MB chapter page.
+     */
+    fun saveThumbnail(imageBytes: ByteArray, outFile: File, targetWidth: Int = 320): Boolean = try {
+        val bitmap: Bitmap? = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        if (bitmap == null) {
+            false
+        } else {
+            val scaled = if (bitmap.width > targetWidth) {
+                val height = (bitmap.height.toFloat() * targetWidth / bitmap.width).toInt().coerceAtLeast(1)
+                Bitmap.createScaledBitmap(bitmap, targetWidth, height, true)
+            } else bitmap
+            outFile.parentFile?.mkdirs()
+            outFile.outputStream().use { scaled.compress(Bitmap.CompressFormat.JPEG, 80, it) }
+            true
+        }
+    } catch (_: Throwable) {
+        false
+    }
+
+    private fun isImageEntry(name: String): Boolean {
+        val lower = name.lowercase()
+        return lower.endsWith(".jpg") || lower.endsWith(".jpeg") ||
+            lower.endsWith(".png") || lower.endsWith(".webp") ||
+            lower.endsWith(".gif") || lower.endsWith(".avif")
+    }
 
     /**
      * Extract ComicInfo.xml into a flat variable map. Returns an empty map if

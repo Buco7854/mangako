@@ -36,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -43,10 +45,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.mangako.app.R
+import com.mangako.app.data.history.HistoryRecord
 import com.mangako.app.domain.pipeline.AuditStep
 import com.mangako.app.domain.pipeline.AuditTrail
 import com.mangako.app.ui.format.humanize
+import java.io.File
 import java.text.DateFormat
 import java.util.Date
 
@@ -93,7 +99,8 @@ fun HistoryDetailScreen(
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item { Header(rec.trail) }
+            item { Header(rec) }
+            item { BreakdownCard(rec.trail) }
             item { SectionHeader(stringResource(R.string.history_section_rules)) }
             items(rec.trail.steps, key = { "${it.index}-${it.ruleId}" }) { step ->
                 StepCard(step)
@@ -105,27 +112,109 @@ fun HistoryDetailScreen(
 }
 
 @Composable
-private fun Header(trail: AuditTrail) {
+private fun Header(rec: HistoryRecord) {
+    val trail = rec.trail
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Label(stringResource(R.string.history_label_original))
-            Mono(trail.sourceFile)
-            Spacer(Modifier.height(6.dp))
-            Label(stringResource(R.string.history_label_final))
-            Mono(trail.finalName)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                stringResource(
-                    R.string.history_ran_in,
-                    DateFormat.getDateTimeInstance().format(Date(trail.finishedAt)),
-                    trail.finishedAt - trail.startedAt,
-                ),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Row(Modifier.padding(16.dp)) {
+            DetailThumbnail(rec.thumbnailPath)
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Label(stringResource(R.string.history_label_original))
+                Mono(trail.sourceFile)
+                Spacer(Modifier.height(6.dp))
+                Label(stringResource(R.string.history_label_final))
+                Mono(trail.finalName)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    stringResource(
+                        R.string.history_ran_in,
+                        DateFormat.getDateTimeInstance().format(Date(trail.finishedAt)),
+                        trail.finishedAt - trail.startedAt,
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailThumbnail(path: String?) {
+    val ctx = LocalContext.current
+    val file = path?.let { File(it).takeIf(File::exists) }
+    Box(
+        modifier = Modifier
+            .size(width = 80.dp, height = 110.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.surface),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (file != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(ctx).data(file).build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
             )
+        }
+    }
+}
+
+/** Card showing the variables the pipeline derived for this run, in
+ *  build-template order. Lets the user see at a glance what each
+ *  bracket-tag in the final filename came from. */
+@Composable
+private fun BreakdownCard(trail: AuditTrail) {
+    val vars = trail.steps.lastOrNull()?.variablesAfter.orEmpty().toMutableMap()
+    // Aggregate the per-step variable updates across the trail so we
+    // get the final value for each (the last step in the trail only
+    // carries that one step's updates, not the cumulative state).
+    for (step in trail.steps) for ((k, v) in step.variablesAfter) vars[k] = v
+
+    val ordered = listOf(
+        "event" to "(C…)",
+        "writer" to "[Writer]",
+        "title" to "Title",
+        "language" to "[Language]",
+        "extra_tags" to "[…trailing]",
+        "series" to "Series",
+        "number" to "Number",
+        "genre" to "Genre",
+    ).mapNotNull { (k, label) -> vars[k]?.takeIf { it.isNotBlank() }?.let { Triple(k, label, it) } }
+    if (ordered.isEmpty()) return
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                stringResource(R.string.history_section_breakdown),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(8.dp))
+            ordered.forEach { (_, label, value) ->
+                Row(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text(
+                        label,
+                        modifier = Modifier.width(110.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        value,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
         }
     }
 }

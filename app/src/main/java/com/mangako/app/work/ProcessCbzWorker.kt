@@ -159,7 +159,14 @@ class ProcessCbzWorker @AssistedInject constructor(
                 Notifications.cancelDetected(applicationContext, pendingId)
             }
 
-            // 7. Persist audit trail.
+            // 7. Persist audit trail. Migrate the detection-time
+            //    thumbnail from the Pending row's cache slot into the
+            //    history's own slot — the Pending row will get
+            //    pruned, but History keeps its copy so the screen
+            //    can still show the cover after the source .cbz is
+            //    deleted on success.
+            val pendingThumbnail = pendingId?.let { pendingRepo.find(it)?.thumbnailPath }
+            val historyThumbnail = pendingThumbnail?.let { migrateThumbnailToHistory(it) }
             historyRepo.record(
                 AuditTrail(
                     sourceFile = originalName,
@@ -169,6 +176,7 @@ class ProcessCbzWorker @AssistedInject constructor(
                     finalName = finalName,
                     uploadStatus = uploadStatus.copy(deletedSource = deleted),
                 ),
+                thumbnailPath = historyThumbnail,
             )
 
             if (uploadStatus.success) return@withContext Result.success()
@@ -203,6 +211,23 @@ class ProcessCbzWorker @AssistedInject constructor(
 
     private fun ensureCbzSuffix(name: String): String =
         if (name.endsWith(".cbz", ignoreCase = true)) name else "$name.cbz"
+
+    /** Copy the watcher's detection-time thumbnail into a separate
+     *  history-owned cache slot so it survives the Pending row being
+     *  pruned. Returns the new path or null on copy failure. */
+    private fun migrateThumbnailToHistory(srcPath: String): String? {
+        val src = File(srcPath)
+        if (!src.exists()) return null
+        val dir = File(applicationContext.cacheDir, "thumbnails_history")
+        if (!dir.exists()) dir.mkdirs()
+        val dst = File(dir, "${java.util.UUID.randomUUID()}.jpg")
+        return runCatching {
+            src.inputStream().use { input ->
+                dst.outputStream().use { output -> input.copyTo(output) }
+            }
+            dst.absolutePath
+        }.getOrNull()
+    }
 
     companion object {
         const val KEY_URI = "uri"

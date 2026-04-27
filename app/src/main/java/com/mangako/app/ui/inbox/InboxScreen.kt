@@ -1,7 +1,9 @@
 package com.mangako.app.ui.inbox
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +27,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
@@ -57,8 +61,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -67,8 +74,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.mangako.app.R
 import com.mangako.app.work.DirectoryScanWorker
+import java.io.File
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -344,12 +354,12 @@ private fun InboxCard(
     }
 }
 
-/** The full-detail card — rename preview, size, timestamp, decide buttons.
- *  Tapping the pencil opens an edit sheet so the user can override the
- *  pipeline variables (title, series, writer, language, event tag,
- *  trailing tags). Detection itself is read-only — the upload name is
- *  rebuilt from the variables, so editing those is what controls the
- *  output. */
+/** The full-detail card — cover thumbnail + simulated title + raw
+ *  filename + decide buttons. Tapping the pencil opens an edit sheet
+ *  so the user can override pipeline-input variables (title, series,
+ *  writer, language, event tag, trailing tags…). The simulated title
+ *  is what the pipeline would write into ComicInfo if Process was
+ *  tapped right now, so the card never lies about what's coming. */
 @Composable
 private fun PendingCard(
     item: InboxViewModel.InboxItem,
@@ -364,8 +374,10 @@ private fun PendingCard(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.Top) {
+                CoverThumbnail(file.thumbnailPath)
+                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     if (file.metadataOverrides.isNotEmpty()) {
                         Text(
@@ -376,12 +388,26 @@ private fun PendingCard(
                         Spacer(Modifier.height(2.dp))
                     }
                     Text(
-                        file.name,
+                        item.simulatedTitle,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        file.name,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontFamily = FontFamily.Monospace,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "${humanSize(file.sizeBytes)} · ${DateFormat.getDateTimeInstance().format(Date(file.detectedAt))}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 IconButton(onClick = { editing = true }) {
@@ -391,21 +417,6 @@ private fun PendingCard(
                     )
                 }
             }
-            if (item.previewedFinal != file.name) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    stringResource(R.string.inbox_rename_to),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                RenameLine(item.previewedFinal)
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "${humanSize(file.sizeBytes)} · ${DateFormat.getDateTimeInstance().format(Date(file.detectedAt))}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onReject, modifier = Modifier.weight(1f)) {
@@ -424,8 +435,8 @@ private fun PendingCard(
 
     if (editing) {
         EditDetectionSheet(
-            initialMetadata = file.metadataOverrides,
-            hasAnyOverride = file.metadataOverrides.isNotEmpty(),
+            detectedMetadata = file.metadata,
+            initialOverrides = file.metadataOverrides,
             onDismiss = { editing = false },
             onSave = { metadata ->
                 editing = false
@@ -439,40 +450,72 @@ private fun PendingCard(
     }
 }
 
+/** Square-ish cover preview rendered from a JPEG the watcher saved
+ *  at detection time. Falls back to a neutral placeholder when the
+ *  thumbnail file isn't there (couldn't extract, file was deleted). */
+@Composable
+private fun CoverThumbnail(path: String?, modifier: Modifier = Modifier) {
+    val ctx = LocalContext.current
+    Box(
+        modifier = modifier
+            .size(width = 56.dp, height = 80.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        val file = path?.let { File(it).takeIf(File::exists) }
+        if (file != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(ctx).data(file).build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Icon(
+                Icons.Outlined.Book,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    }
+}
+
 /**
- * Bottom sheet that lets the user override the pipeline variables
- * before processing. Whatever the user types here wins over what
- * ExtractXmlMetadata reads from the archive (and over what detection
- * extracts from the filename, for `event` / `extra_tags`).
+ * Bottom sheet for editing the ComicInfo-shaped metadata that feeds
+ * the pipeline. Pre-fills every field the watcher actually read off
+ * the .cbz at detection time, plus any standard fields that were
+ * empty (so the user always sees the full schema and can fill in a
+ * blank). The user can:
  *
- * The fields cover everything the default LANraragi Standard pipeline
- * reads:
- *   - title / series / writer / language / number / genre — straight
- *     from ComicInfo.xml
- *   - event — convention tag the build template prefixes
- *     ("(C96) [Author] …")
- *   - extra_tags — release tags after the language bracket on the
- *     rebuilt filename ("…[English] [Decensored] [v2].cbz")
+ *   - Edit any value (treated as INPUT to the pipeline — overrides
+ *     ExtractXmlMetadata's read)
+ *   - Clear a value (treated as "no override")
+ *   - Add a brand-new field via "Add field" (key + value), useful
+ *     for arbitrary `%var%` tokens a custom pipeline rule reads
  *
- * Empty fields mean "don't override". Each field has a placeholder
- * showing a realistic example so users can see what shape Mangako
- * expects.
+ * What gets persisted is the diff against detection: anything the
+ * user changed (including blanks → "delete") becomes an entry in
+ * %metadataOverrides%; anything they left untouched stays
+ * implicit. That keeps round-tripping clean — re-detecting the
+ * same file doesn't suddenly bake in stale overrides.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditDetectionSheet(
-    initialMetadata: Map<String, String>,
-    hasAnyOverride: Boolean,
+    detectedMetadata: Map<String, String>,
+    initialOverrides: Map<String, String>,
     onDismiss: () -> Unit,
     onSave: (Map<String, String>) -> Unit,
     onReset: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    // Pre-fill each field with the user's existing override (if any).
-    // We don't show what the .cbz's ComicInfo currently holds because
-    // detection hasn't extracted it yet — reading it on demand would
-    // block the UI on a zip parse.
-    val keys = listOf("title", "series", "writer", "language", "number", "genre", "event", "extra_tags")
+
+    // Standard fields the default pipeline knows about — always
+    // shown (in this order) even when detection didn't read a
+    // value, so the user has a fixed place to fill them in.
+    val standardKeys = listOf("title", "series", "writer", "language", "number", "genre", "event", "extra_tags")
     val labels = mapOf(
         "title" to stringResource(R.string.inbox_edit_metadata_title),
         "series" to stringResource(R.string.inbox_edit_metadata_series),
@@ -493,20 +536,26 @@ private fun EditDetectionSheet(
         "event" to stringResource(R.string.inbox_edit_metadata_event_placeholder),
         "extra_tags" to stringResource(R.string.inbox_edit_metadata_extra_tags_placeholder),
     )
-    val fieldValues = remember(initialMetadata) {
-        keys.associateWith { mutableStateOf(initialMetadata[it].orEmpty().let {
-            // %extra_tags% is conventionally stored with leading
-            // space; strip it here so the user sees a clean
-            // "[Decensored]" rather than " [Decensored]".
-            if (it.startsWith(" ")) it.trimStart() else it
-        }) }
+
+    // Build the initial field list: every standard key + every
+    // custom key the user previously added or detection found.
+    // Each entry holds its current text in mutable state so edits
+    // survive recomposition.
+    val fields = remember(detectedMetadata, initialOverrides) {
+        val merged = LinkedHashMap<String, String>()
+        for (k in standardKeys) merged[k] = displayValue(k, initialOverrides[k] ?: detectedMetadata[k].orEmpty())
+        for ((k, v) in detectedMetadata) if (k !in merged) merged[k] = displayValue(k, initialOverrides[k] ?: v)
+        for ((k, v) in initialOverrides) if (k !in merged) merged[k] = displayValue(k, v)
+        merged.entries
+            .map { (k, v) -> mutableStateOf(k) to mutableStateOf(v) }
+            .toMutableStateList()
     }
+    var addingField by remember { mutableStateOf(false) }
+    var newKey by remember { mutableStateOf("") }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        // Same insets handling as the other Mangako sheets so the title
-        // doesn't sit under the camera punch-hole.
         contentWindowInsets = {
             WindowInsets.systemBars.union(WindowInsets.displayCutout)
         },
@@ -530,21 +579,69 @@ private fun EditDetectionSheet(
             )
 
             Spacer(Modifier.height(16.dp))
-            keys.forEach { k ->
-                val state = fieldValues.getValue(k)
-                OutlinedTextField(
-                    value = state.value,
-                    onValueChange = { state.value = it },
-                    label = { Text(labels.getValue(k)) },
-                    placeholder = { Text(placeholders.getValue(k)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                )
+            fields.forEachIndexed { index, (keyState, valueState) ->
+                val key = keyState.value
+                val isStandard = key in standardKeys
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = valueState.value,
+                        onValueChange = { valueState.value = it },
+                        label = {
+                            Text(
+                                if (isStandard) labels[key] ?: key
+                                else "%${key}%",
+                            )
+                        },
+                        placeholder = placeholders[key]?.let { ph -> { Text(ph) } },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (!isStandard) {
+                        IconButton(onClick = { fields.removeAt(index) }) {
+                            Icon(
+                                Icons.Outlined.Delete,
+                                contentDescription = stringResource(R.string.inbox_edit_field_remove_cd),
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            if (addingField) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newKey,
+                        onValueChange = { newKey = it.filter { c -> c.isLetterOrDigit() || c == '_' } },
+                        label = { Text(stringResource(R.string.inbox_edit_field_new_key_label)) },
+                        placeholder = { Text(stringResource(R.string.inbox_edit_field_new_key_placeholder)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        enabled = newKey.isNotBlank() && fields.none { it.first.value == newKey },
+                        onClick = {
+                            fields.add(mutableStateOf(newKey) to mutableStateOf(""))
+                            newKey = ""
+                            addingField = false
+                        },
+                    ) { Text(stringResource(R.string.inbox_edit_field_add_confirm)) }
+                }
+            } else {
+                TextButton(onClick = { addingField = true }) {
+                    Icon(Icons.Outlined.Add, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(stringResource(R.string.inbox_edit_field_add))
+                }
             }
 
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (hasAnyOverride) {
+                if (initialOverrides.isNotEmpty()) {
                     TextButton(onClick = onReset) {
                         Text(stringResource(R.string.inbox_edit_reset))
                     }
@@ -555,13 +652,22 @@ private fun EditDetectionSheet(
                 }
                 Button(
                     onClick = {
-                        val metadata = keys
-                            .mapNotNull { k ->
-                                val v = fieldValues.getValue(k).value.trim()
-                                if (v.isEmpty()) null else k to v
-                            }
-                            .toMap()
-                        onSave(metadata)
+                        // Build the override map by diffing the current
+                        // field values against detection. A field that
+                        // matches detection is implicit (no override);
+                        // a changed or empty value becomes an explicit
+                        // override entry so the worker treats it as
+                        // input to the pipeline.
+                        val overrides = LinkedHashMap<String, String>()
+                        for ((keyState, valueState) in fields) {
+                            val key = keyState.value
+                            if (key.isBlank()) continue
+                            val raw = valueState.value.trim()
+                            val detected = detectedMetadata[key].orEmpty()
+                            if (raw == detected) continue
+                            overrides[key] = raw
+                        }
+                        onSave(overrides)
                     },
                 ) {
                     Text(stringResource(R.string.inbox_edit_save))
@@ -570,6 +676,12 @@ private fun EditDetectionSheet(
         }
     }
 }
+
+/** Strip the leading-space convention off %extra_tags% so the
+ *  user sees a clean "[Decensored]" rather than " [Decensored]".
+ *  Persistence re-adds the space at save time via the repository. */
+private fun displayValue(key: String, raw: String): String =
+    if (key == "extra_tags" && raw.startsWith(" ")) raw.trimStart() else raw
 
 
 /**
@@ -598,41 +710,28 @@ private fun ProcessedCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
         Row(
-            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+            modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            CoverThumbnail(file.thumbnailPath)
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    file.name,
-                    style = if (finalName != null) MaterialTheme.typography.bodySmall
-                    else MaterialTheme.typography.titleSmall,
-                    fontWeight = if (finalName != null) FontWeight.Normal else FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace,
-                    color = if (finalName != null) MaterialTheme.colorScheme.onSurfaceVariant
-                    else MaterialTheme.colorScheme.onSurface,
+                    item.simulatedTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (finalName != null) {
-                    Spacer(Modifier.height(2.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.ArrowForward,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            finalName,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    finalName ?: file.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             IconButton(onClick = onForget) {
                 Icon(
@@ -657,15 +756,29 @@ private fun IgnoredCard(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(
-                file.name,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                fontFamily = FontFamily.Monospace,
-            )
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                CoverThumbnail(file.thumbnailPath)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        item.simulatedTitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        file.name,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onForget, modifier = Modifier.weight(1f)) {

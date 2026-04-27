@@ -30,6 +30,13 @@ data class HistoryEntry(
     val message: String?,
     /** Serialized [AuditTrail]. */
     val auditJson: String,
+    /**
+     * Path to the thumbnail JPEG copied across from the Pending row at
+     * processing time. The source .cbz is typically deleted after
+     * upload (deleteOnSuccess defaults true), so we hold our own copy
+     * here rather than relying on the live archive being readable.
+     */
+    val thumbnailPath: String? = null,
 )
 
 /**
@@ -64,6 +71,21 @@ data class PendingEntry(
      * NULL means "no overrides".
      */
     val metadataOverridesJson: String? = null,
+    /**
+     * JSON-serialized snapshot of ComicInfo.xml as the watcher read
+     * it at detection time. Lets the Inbox card show a real
+     * pipeline-simulated title and pre-fill the edit sheet without
+     * having to re-open the .cbz on every render. NULL when the
+     * watcher couldn't read the file (cloud-only URI, opened mid-write).
+     */
+    val metadataJson: String? = null,
+    /**
+     * Absolute path to a downsampled thumbnail JPEG the watcher saved
+     * from the .cbz's first page image. NULL when no image could be
+     * extracted (corrupt zip, image-less archive). Lives under the
+     * app's internal cache dir; cleaned up when the row is deleted.
+     */
+    val thumbnailPath: String? = null,
 )
 
 /** Row of a `GROUP BY status` query — used for the Inbox filter chip counts. */
@@ -122,6 +144,9 @@ interface PendingDao {
     @Query("UPDATE pending SET metadataOverridesJson = :json WHERE id = :id")
     suspend fun setMetadataOverridesJson(id: String, json: String?)
 
+    @Query("UPDATE pending SET metadataJson = :metadataJson, thumbnailPath = :thumbnailPath WHERE id = :id")
+    suspend fun setDetectionInfo(id: String, metadataJson: String?, thumbnailPath: String?)
+
     @Query("DELETE FROM pending WHERE id = :id")
     suspend fun delete(id: String)
 
@@ -139,7 +164,7 @@ class Converters {
         HistoryJson.encodeToString(trail)
 }
 
-@Database(entities = [HistoryEntry::class, PendingEntry::class], version = 5, exportSchema = false)
+@Database(entities = [HistoryEntry::class, PendingEntry::class], version = 6, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class HistoryDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao

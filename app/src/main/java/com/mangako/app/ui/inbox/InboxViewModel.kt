@@ -69,19 +69,20 @@ class InboxViewModel @Inject constructor(
     data class InboxItem(
         val file: PendingFile,
         /**
-         * Dry-run preview of what the renaming pipeline would CURRENTLY
-         * produce for this file's name. Used by the Pending view as a hint
-         * about what 'Process' will do — meaningful only when the pipeline
-         * could still actually run against the file.
+         * Pipeline-simulated %title%, ready to display as the human
+         * title on the card. Computed by running today's pipeline
+         * against the row's detection-time metadata + user overrides
+         * and reading the resulting %title% variable. Falls back to
+         * a sensible value when detection didn't manage to read
+         * ComicInfo (the source filename, minus .cbz).
          */
-        val previewedFinal: String,
+        val simulatedTitle: String,
         /**
          * The actually-uploaded filename for a Processed row. Sourced
          * preferentially from the row's own [PendingFile.finalName] column
          * (set at upload time), then from the matching history record if
          * the column is null (legacy rows). Null only when neither source
-         * has the value — in that case the Processed card hides the arrow
-         * rather than guessing via a re-run preview.
+         * has the value.
          */
         val recordedFinal: String?,
     )
@@ -116,13 +117,15 @@ class InboxViewModel @Inject constructor(
         UiState(
             filter = filter.value,
             items = items.map { p ->
-                // Preview the pipeline as the worker will run it —
-                // detected filename in, user metadata overrides
-                // merged on top. Keeps the Pending card's "Renames
-                // to" hint truthful after an edit.
+                // Simulate the pipeline as the worker will run it —
+                // detection-time metadata + user overrides merged on
+                // top. Read the resulting %title% to get the human
+                // title we'll show on the card; that's the same value
+                // the pipeline will write into ComicInfo, so the card
+                // never lies about what Process will produce.
                 InboxItem(
                     file = p,
-                    previewedFinal = previewRename(config, p.name, p.metadataOverrides),
+                    simulatedTitle = simulateTitle(config, p),
                     recordedFinal = p.finalName ?: historyFinalByOriginal[p.name],
                 )
             },
@@ -194,21 +197,26 @@ class InboxViewModel @Inject constructor(
     }
 
     /**
-     * Best-effort dry run of the pipeline against [name]. The real run inside
-     * [ProcessCbzWorker] also extracts ComicInfo metadata; we don't have that
-     * here, so we feed it whatever the user typed into the Inbox edit sheet
-     * as the metadata map. Rules that depend on metadata Mihon embedded
-     * (and the user didn't override) won't fire, but anything driven by an
-     * override will preview correctly — which is the case the user most
-     * cares about ("did my edit take?").
+     * Run today's pipeline against [file]'s detection-time metadata
+     * (overlaid with the user's edit-detection overrides) and return
+     * the resulting %title% variable. That's the same string the
+     * worker will end up writing into ComicInfo at processing time,
+     * so the Inbox card can show "what's about to land in LANraragi"
+     * without lying.
+     *
+     * Falls back to the detected filename (sans .cbz) when the
+     * pipeline produces no title or detection couldn't read
+     * ComicInfo at all — better than rendering a blank card.
      */
-    private fun previewRename(
-        config: PipelineConfig,
-        name: String,
-        overrides: Map<String, String>,
-    ): String =
-        if (config.rules.isEmpty()) name
-        else PipelineExecutor()
-            .run(config, PipelineExecutor.Input(originalFilename = name, metadata = overrides))
-            .finalFilename
+    private fun simulateTitle(config: PipelineConfig, file: PendingFile): String {
+        if (config.rules.isEmpty()) return file.name.removeSuffix(".cbz")
+        val merged = file.metadata + file.metadataOverrides
+        val out = PipelineExecutor().run(
+            config,
+            PipelineExecutor.Input(originalFilename = file.name, metadata = merged),
+        )
+        return out.variables["title"]
+            ?.takeIf { it.isNotBlank() }
+            ?: file.name.removeSuffix(".cbz")
+    }
 }

@@ -37,6 +37,12 @@ data class PendingFile(
      *  the user can fix bad detection without re-encoding the file.
      *  Empty when no overrides are set. */
     val metadataOverrides: Map<String, String> = emptyMap(),
+    /** ComicInfo.xml as the watcher read it at detection time. Empty if
+     *  the watcher couldn't read the file or it carried no ComicInfo. */
+    val metadata: Map<String, String> = emptyMap(),
+    /** Absolute path to a small JPEG cover thumbnail saved at detection
+     *  time. Null if no image could be extracted. */
+    val thumbnailPath: String? = null,
 )
 
 /**
@@ -75,6 +81,11 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
     /**
      * Idempotent add: returns an existing row if we've already seen the same
      * (uri, sizeBytes) pair, otherwise inserts & returns the fresh row.
+     *
+     * [metadata] and [thumbnailPath] come from the watcher's
+     * detection-time peek inside the .cbz. They're optional — passing
+     * empty/null is fine and the row will still appear in the Inbox,
+     * just without a thumbnail or simulated title.
      */
     suspend fun addIfAbsent(
         uri: String,
@@ -82,6 +93,8 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
         sizeBytes: Long,
         folderUri: String,
         detectedAt: Long = System.currentTimeMillis(),
+        metadata: Map<String, String> = emptyMap(),
+        thumbnailPath: String? = null,
     ): PendingFile {
         dao.findByUriAndSize(uri, sizeBytes)?.let { return it.toDomain() }
         val id = UUID.randomUUID().toString()
@@ -93,9 +106,24 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
             detectedAt = detectedAt,
             folderUri = folderUri,
             status = PendingStatus.PENDING.name,
+            metadataJson = metadata.takeIf { it.isNotEmpty() }?.let {
+                OverrideJson.encodeToString(OverrideMapSerializer, it)
+            },
+            thumbnailPath = thumbnailPath,
         )
         dao.insertIgnoring(row)
         return (dao.findById(id) ?: row).toDomain()
+    }
+
+    /** Updates the detection-time metadata + thumbnail for an
+     *  already-known row. Lets the watcher fill in detection details
+     *  on a row that was inserted before the extraction completed
+     *  (e.g. the file was still being copied into the folder). */
+    suspend fun updateDetectionInfo(id: String, metadata: Map<String, String>, thumbnailPath: String?) {
+        val json = metadata.takeIf { it.isNotEmpty() }?.let {
+            OverrideJson.encodeToString(OverrideMapSerializer, it)
+        }
+        dao.setDetectionInfo(id, json, thumbnailPath)
     }
 
     suspend fun approve(id: String) = dao.setStatus(id, PendingStatus.APPROVED.name)
@@ -152,8 +180,12 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
         folderUri = folderUri,
         status = runCatching { PendingStatus.valueOf(status) }.getOrDefault(PendingStatus.PENDING),
         finalName = finalName,
-        metadataOverrides = metadataOverridesJson?.let {
-            runCatching { OverrideJson.decodeFromString(OverrideMapSerializer, it) }.getOrDefault(emptyMap())
-        } ?: emptyMap(),
+        metadataOverrides = metadataOverridesJson.toMapOrEmpty(),
+        metadata = metadataJson.toMapOrEmpty(),
+        thumbnailPath = thumbnailPath,
     )
+
+    private fun String?.toMapOrEmpty(): Map<String, String> =
+        this?.let { runCatching { OverrideJson.decodeFromString(OverrideMapSerializer, it) }.getOrDefault(emptyMap()) }
+            ?: emptyMap()
 }

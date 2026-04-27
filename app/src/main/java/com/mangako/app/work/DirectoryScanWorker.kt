@@ -15,6 +15,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.mangako.app.data.pending.PendingRepository
 import com.mangako.app.data.settings.SettingsRepository
+import com.mangako.app.domain.cbz.CbzProcessor
 import com.mangako.app.work.notify.Notifications
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -40,6 +41,7 @@ class DirectoryScanWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val settingsRepo: SettingsRepository,
     private val pendingRepo: PendingRepository,
+    private val cbzProcessor: CbzProcessor,
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -130,11 +132,22 @@ class DirectoryScanWorker @AssistedInject constructor(
         folderUri: String,
         notify: Boolean,
     ) {
+        // Peek inside the .cbz at detection time so the Inbox card
+        // can show a real cover thumbnail and a pipeline-simulated
+        // title. Streaming through ZipInputStream means we don't have
+        // to copy the whole archive to local cache. Failure here
+        // (file mid-write, cloud-only URI, etc.) is non-fatal — the
+        // row still appears in the Inbox, just without detection
+        // info, and the worker re-extracts at processing time.
+        val (metadata, thumbnailPath) = extractDetection(child, name)
+
         val row = pendingRepo.addIfAbsent(
             uri = child.uri.toString(),
             name = name,
             sizeBytes = child.length(),
             folderUri = folderUri,
+            metadata = metadata,
+            thumbnailPath = thumbnailPath,
         )
         // addIfAbsent returns either a fresh PENDING row or an existing one of
         // any status — only post a notification for the former.
@@ -147,6 +160,39 @@ class DirectoryScanWorker @AssistedInject constructor(
                     ?: folderUri,
             )
         }
+        // If the row pre-existed but we just managed to extract
+        // detection info this scan (e.g. previous scan caught the file
+        // mid-write), backfill it onto the existing row.
+        if (row.metadata.isEmpty() && metadata.isNotEmpty()) {
+            pendingRepo.updateDetectionInfo(row.id, metadata, thumbnailPath ?: row.thumbnailPath)
+        }
+    }
+
+    private fun extractDetection(
+        child: DocumentFile,
+        name: String,
+    ): Pair<Map<String, String>, String?> {
+        val info = runCatching {
+            applicationContext.contentResolver.openInputStream(child.uri)?.use { input ->
+                cbzProcessor.extractDetectionInfo(input)
+            }
+        }.getOrNull() ?: return emptyMap<String, String>() to null
+
+        val thumbnailPath = info.firstImage?.let { bytes ->
+            val outFile = thumbnailFileFor(name, child.uri.toString())
+            if (cbzProcessor.saveThumbnail(bytes, outFile)) outFile.absolutePath else null
+        }
+        return info.metadata to thumbnailPath
+    }
+
+    private fun thumbnailFileFor(name: String, uri: String): java.io.File {
+        // Stable filename keyed by the source URI hash + size — same
+        // dedup grain we use for the pending row itself, so re-scans
+        // overwrite the previous thumbnail rather than piling up.
+        val key = (uri + "|" + name).hashCode().toString()
+        val dir = java.io.File(applicationContext.cacheDir, "thumbnails")
+        if (!dir.exists()) dir.mkdirs()
+        return java.io.File(dir, "$key.jpg")
     }
 
     private fun enqueueProcess(uri: String, name: String) {

@@ -15,6 +15,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.mangako.app.data.pending.PendingRepository
 import com.mangako.app.data.settings.SettingsRepository
+import com.mangako.app.domain.cbz.CbzProcessor
 import com.mangako.app.work.notify.Notifications
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -40,14 +41,39 @@ class DirectoryScanWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val settingsRepo: SettingsRepository,
     private val pendingRepo: PendingRepository,
+    private val cbzProcessor: CbzProcessor,
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val settings = settingsRepo.flow.first()
-        if (!settings.watcherEnabled || settings.watchFolderUris.isEmpty()) {
+        // The "manual" flag is set by [runOnce]: the user explicitly tapped
+        // "Scan now", which is intent enough to override watcherEnabled. The
+        // periodic scheduler does NOT set it, so a watcher that's been
+        // explicitly turned off still stays off in the background.
+        val manual = inputData.getBoolean(KEY_MANUAL, false)
+        if (settings.watchFolderUris.isEmpty()) {
+            return@withContext Result.success()
+        }
+        if (!manual && !settings.watcherEnabled) {
             return@withContext Result.success()
         }
 
+        try {
+            scanFolders(settings)
+            Result.success()
+        } finally {
+            // Re-arm the content-uri-trigger observer so the worker wakes
+            // again the next time the SAF tree changes. WorkManager consumes
+            // the trigger after firing, so without this we'd only get one
+            // event-driven run before the worker fell back to the periodic
+            // 15-minute schedule.
+            if (!manual && settings.watcherEnabled && settings.watchFolderUris.isNotEmpty()) {
+                scheduleObserver(applicationContext, settings.watchFolderUris)
+            }
+        }
+    }
+
+    private suspend fun scanFolders(settings: SettingsRepository.Settings) {
         for (folderUri in settings.watchFolderUris) {
             val folder = DocumentFile.fromTreeUri(applicationContext, Uri.parse(folderUri))
             if (folder == null || !folder.isDirectory) continue
@@ -77,7 +103,6 @@ class DirectoryScanWorker @AssistedInject constructor(
         } else {
             Notifications.cancelInboxSummary(applicationContext)
         }
-        Result.success()
     }
 
     /**
@@ -107,11 +132,22 @@ class DirectoryScanWorker @AssistedInject constructor(
         folderUri: String,
         notify: Boolean,
     ) {
+        // Peek inside the .cbz at detection time so the Inbox card
+        // can show a real cover thumbnail and a pipeline-simulated
+        // title. Streaming through ZipInputStream means we don't have
+        // to copy the whole archive to local cache. Failure here
+        // (file mid-write, cloud-only URI, etc.) is non-fatal — the
+        // row still appears in the Inbox, just without detection
+        // info, and the worker re-extracts at processing time.
+        val (metadata, thumbnailPath) = extractDetection(child, name)
+
         val row = pendingRepo.addIfAbsent(
             uri = child.uri.toString(),
             name = name,
             sizeBytes = child.length(),
             folderUri = folderUri,
+            metadata = metadata,
+            thumbnailPath = thumbnailPath,
         )
         // addIfAbsent returns either a fresh PENDING row or an existing one of
         // any status — only post a notification for the former.
@@ -124,6 +160,39 @@ class DirectoryScanWorker @AssistedInject constructor(
                     ?: folderUri,
             )
         }
+        // If the row pre-existed but we just managed to extract
+        // detection info this scan (e.g. previous scan caught the file
+        // mid-write), backfill it onto the existing row.
+        if (row.metadata.isEmpty() && metadata.isNotEmpty()) {
+            pendingRepo.updateDetectionInfo(row.id, metadata, thumbnailPath ?: row.thumbnailPath)
+        }
+    }
+
+    private fun extractDetection(
+        child: DocumentFile,
+        name: String,
+    ): Pair<Map<String, String>, String?> {
+        val info = runCatching {
+            applicationContext.contentResolver.openInputStream(child.uri)?.use { input ->
+                cbzProcessor.extractDetectionInfo(input)
+            }
+        }.getOrNull() ?: return emptyMap<String, String>() to null
+
+        val thumbnailPath = info.firstImage?.let { bytes ->
+            val outFile = thumbnailFileFor(name, child.uri.toString())
+            if (cbzProcessor.saveThumbnail(bytes, outFile)) outFile.absolutePath else null
+        }
+        return info.metadata to thumbnailPath
+    }
+
+    private fun thumbnailFileFor(name: String, uri: String): java.io.File {
+        // Stable filename keyed by the source URI hash + size — same
+        // dedup grain we use for the pending row itself, so re-scans
+        // overwrite the previous thumbnail rather than piling up.
+        val key = (uri + "|" + name).hashCode().toString()
+        val dir = java.io.File(applicationContext.cacheDir, "thumbnails")
+        if (!dir.exists()) dir.mkdirs()
+        return java.io.File(dir, "$key.jpg")
     }
 
     private fun enqueueProcess(uri: String, name: String) {
@@ -143,35 +212,114 @@ class DirectoryScanWorker @AssistedInject constructor(
 
     companion object {
         const val UNIQUE_NAME = "mangako_watcher"
+        private const val OBSERVER_UNIQUE_NAME = "mangako_watcher_observer"
 
         /** Depth cap for [walkCbz]. Mihon/Tachiyomi typically nest 2–3 deep; 6 is generous. */
         private const val MAX_WALK_DEPTH = 6
 
-        /** WorkManager's minimum periodic interval. */
+        /** Periodic safety-net interval (WorkManager minimum is 15 min). */
         private const val SCAN_INTERVAL_MINUTES = 15L
 
-        fun schedule(context: Context) {
+        /** Marker on the [WorkerParameters.inputData] that distinguishes a user-
+         *  initiated "Scan now" from the periodic / observer-triggered runs.
+         *  When set, the scan runs even if the persistent watcher toggle is off. */
+        const val KEY_MANUAL = "manual"
+
+        /**
+         * Set up both the event-driven observer and the periodic safety-net.
+         * Call this from anywhere settings affecting the watcher change
+         * (folder list mutations, watcher toggle on, etc.). It's idempotent —
+         * existing workers are replaced with the latest URI list.
+         */
+        fun schedule(context: Context, watchFolderUris: Set<String>) {
+            schedulePeriodic(context)
+            scheduleObserver(context, watchFolderUris)
+        }
+
+        /**
+         * Periodic safety net. Runs every 15 minutes even if no content-uri
+         * triggers fire — guards against DocumentsProviders that don't notify
+         * on change (some third-party file managers).
+         *
+         * No network constraint: scanning is a local-disk operation, so
+         * requiring CONNECTED would gate the worker offline. Upload still
+         * keeps its own network constraint inside ProcessCbzWorker.
+         */
+        private fun schedulePeriodic(context: Context) {
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
-                PeriodicWorkRequestBuilder<DirectoryScanWorker>(SCAN_INTERVAL_MINUTES, TimeUnit.MINUTES)
-                    .setConstraints(
-                        Constraints.Builder()
-                            .setRequiredNetworkType(NetworkType.CONNECTED)
-                            .build(),
-                    )
+                PeriodicWorkRequestBuilder<DirectoryScanWorker>(SCAN_INTERVAL_MINUTES, TimeUnit.MINUTES).build(),
+            )
+        }
+
+        /**
+         * Event-driven observer. Wakes the worker within seconds of a watched
+         * SAF tree changing (file added / renamed / removed) instead of
+         * waiting for the next periodic tick.
+         *
+         * Implementation: a one-shot work request with content-uri triggers
+         * for each folder. WorkManager consumes the trigger after firing, so
+         * the worker re-arms itself at the end of doWork() to keep listening.
+         *
+         * Caveats:
+         *  - Triggers only fire when the underlying [DocumentsProvider]
+         *    notifies via [ContentResolver.notifyChange]. Standard providers
+         *    (DownloadProvider, ExternalStorageProvider) do; some third-party
+         *    file managers don't. The periodic schedule above is the fallback
+         *    for those.
+         *  - The 3-second debounce avoids re-running mid-file-write while a
+         *    download is still streaming bytes.
+         */
+        private fun scheduleObserver(context: Context, watchFolderUris: Set<String>) {
+            if (watchFolderUris.isEmpty()) return
+            val constraints = Constraints.Builder()
+                .apply {
+                    watchFolderUris.forEach { uri ->
+                        runCatching { addContentUriTrigger(Uri.parse(uri), true) }
+                    }
+                }
+                .setTriggerContentUpdateDelay(3, TimeUnit.SECONDS)
+                .setTriggerContentMaxDelay(15, TimeUnit.MINUTES)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                OBSERVER_UNIQUE_NAME,
+                ExistingWorkPolicy.REPLACE,
+                OneTimeWorkRequestBuilder<DirectoryScanWorker>()
+                    .setConstraints(constraints)
                     .build(),
             )
         }
 
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_NAME)
+            WorkManager.getInstance(context).cancelUniqueWork(OBSERVER_UNIQUE_NAME)
         }
 
         /** One-shot scan (UI "Scan now" button). */
         fun runOnce(context: Context) {
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "mangako_watcher_once",
+                ExistingWorkPolicy.REPLACE,
+                OneTimeWorkRequestBuilder<DirectoryScanWorker>()
+                    .setInputData(androidx.work.workDataOf(KEY_MANUAL to true))
+                    .build(),
+            )
+        }
+
+        /**
+         * Scan if (and only if) the watcher is enabled. Used by MainActivity
+         * on app resume — when the user comes back to Mangako after
+         * downloading something via another app, the SAF DocumentsProvider
+         * may have skipped notifying our content-uri trigger (most
+         * downloaders write through the underlying filesystem, not via
+         * DocumentsContract), so a synchronous catch-up scan on resume is
+         * what consistently picks them up. The worker itself checks
+         * watcherEnabled and bails if the user has the watcher toggled off.
+         */
+        fun runIfWatching(context: Context) {
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "mangako_watcher_resume",
                 ExistingWorkPolicy.REPLACE,
                 OneTimeWorkRequestBuilder<DirectoryScanWorker>().build(),
             )

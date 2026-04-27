@@ -58,6 +58,13 @@ class ProcessCbzWorker @AssistedInject constructor(
         val pendingId = inputData.getString(KEY_PENDING_ID)
         val settings = settingsRepo.flow.first()
         val config = pipelineRepo.flow.first()
+        // The user may have overridden ComicInfo variables from the
+        // Inbox card ("Edit detection") before tapping Process. We
+        // always look up the pending row here rather than threading
+        // the overrides through input Data, so edits applied after
+        // the work was already enqueued (e.g. via approveAll) are
+        // still picked up.
+        val metadataOverrides = pendingId?.let { pendingRepo.find(it)?.metadataOverrides }.orEmpty()
 
         val docFile = DocumentFile.fromSingleUri(applicationContext, android.net.Uri.parse(uriStr))
             ?: return@withContext Result.failure() // malformed URI — never going to work
@@ -82,15 +89,45 @@ class ProcessCbzWorker @AssistedInject constructor(
         val startedAt = System.currentTimeMillis()
 
         try {
-            // 3. Metadata → pipeline variable context.
-            val metadata = cbzProcessor.extractMetadata(localCopy)
+            // 3. Metadata → pipeline variable context. User overrides
+            //    win on key collisions: the Inbox "Edit detection"
+            //    sheet exists precisely so the user can correct what
+            //    ComicInfo got wrong, so anything they typed should
+            //    take priority over the file's own values.
+            val metadata = cbzProcessor.extractMetadata(localCopy) + metadataOverrides
 
-            // 4. Run pipeline.
+            // 4. Run the pipeline. The detected filename feeds in
+            //    only as a tag-extraction source (event/extras/emoji
+            //    language); the upload name itself is rebuilt from
+            //    %writer% / %title% / %language% / %extra_tags% by
+            //    the build-filename step. To control the upload name
+            //    the user edits the metadata overrides on the Inbox
+            //    card, not the filename.
             val runOut = PipelineExecutor().run(
                 config,
                 PipelineExecutor.Input(originalFilename = originalName, metadata = metadata),
             )
             val finalName = ensureCbzSuffix(runOut.finalFilename)
+
+            // 4b. Apply any ComicInfo.xml writes the pipeline requested via
+            //     [Rule.WriteComicInfo]. The pipeline itself can't touch
+            //     the file (it only knows the filename string), so it
+            //     records the desired writes as a side effect on
+            //     PipelineExecutor.Output and we apply them here. Without
+            //     a WriteComicInfo rule in the pipeline, the file's
+            //     ComicInfo is left alone — LANraragi's auto-extraction
+            //     will then pick up the upstream <Title> from Mihon. The
+            //     LANraragi-side metadata API call inside LanraragiClient
+            //     stays as a fallback so the displayed title still tracks
+            //     the renamed filename even when ComicInfo isn't rewritten.
+            if (runOut.comicInfoUpdates.isNotEmpty()) {
+                runCatching {
+                    cbzProcessor.updateMetadata(
+                        cbz = localCopy,
+                        fieldsToSet = runOut.comicInfoUpdates,
+                    )
+                }
+            }
 
             // 5. Upload.
             val client = LanraragiClient(
@@ -114,11 +151,22 @@ class ProcessCbzWorker @AssistedInject constructor(
                 runCatching { docFile.delete() }.getOrDefault(false)
             } else false
             if (uploadStatus.success && pendingId != null) {
-                pendingRepo.markDone(pendingId)
+                // Persist the actually-uploaded filename onto the Pending row
+                // so the Inbox / Processed view renders the same string the
+                // user will see in LANraragi (not a fresh re-run of today's
+                // pipeline against the original name).
+                pendingRepo.markDone(pendingId, finalName)
                 Notifications.cancelDetected(applicationContext, pendingId)
             }
 
-            // 7. Persist audit trail.
+            // 7. Persist audit trail. Migrate the detection-time
+            //    thumbnail from the Pending row's cache slot into the
+            //    history's own slot — the Pending row will get
+            //    pruned, but History keeps its copy so the screen
+            //    can still show the cover after the source .cbz is
+            //    deleted on success.
+            val pendingThumbnail = pendingId?.let { pendingRepo.find(it)?.thumbnailPath }
+            val historyThumbnail = pendingThumbnail?.let { migrateThumbnailToHistory(it) }
             historyRepo.record(
                 AuditTrail(
                     sourceFile = originalName,
@@ -128,6 +176,7 @@ class ProcessCbzWorker @AssistedInject constructor(
                     finalName = finalName,
                     uploadStatus = uploadStatus.copy(deletedSource = deleted),
                 ),
+                thumbnailPath = historyThumbnail,
             )
 
             if (uploadStatus.success) return@withContext Result.success()
@@ -162,6 +211,23 @@ class ProcessCbzWorker @AssistedInject constructor(
 
     private fun ensureCbzSuffix(name: String): String =
         if (name.endsWith(".cbz", ignoreCase = true)) name else "$name.cbz"
+
+    /** Copy the watcher's detection-time thumbnail into a separate
+     *  history-owned cache slot so it survives the Pending row being
+     *  pruned. Returns the new path or null on copy failure. */
+    private fun migrateThumbnailToHistory(srcPath: String): String? {
+        val src = File(srcPath)
+        if (!src.exists()) return null
+        val dir = File(applicationContext.cacheDir, "thumbnails_history")
+        if (!dir.exists()) dir.mkdirs()
+        val dst = File(dir, "${java.util.UUID.randomUUID()}.jpg")
+        return runCatching {
+            src.inputStream().use { input ->
+                dst.outputStream().use { output -> input.copyTo(output) }
+            }
+            dst.absolutePath
+        }.getOrNull()
+    }
 
     companion object {
         const val KEY_URI = "uri"

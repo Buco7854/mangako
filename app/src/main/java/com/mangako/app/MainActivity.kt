@@ -19,17 +19,26 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -95,32 +104,82 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
     val currentRoute = backStack?.destination?.route
     val pendingCount by viewModel.pendingCount.collectAsState(initial = 0)
 
+    // Scan watched folders whenever the app comes back to the foreground.
+    // SAF content-uri triggers don't fire when downloaders (Mihon, browsers,
+    // etc.) write directly to the filesystem rather than through the
+    // DocumentsProvider's API — which is the common case. The user's
+    // mental model is "I downloaded a file, now I open Mangako and expect
+    // to see it"; a scan on resume makes that mental model match reality.
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                com.mangako.app.work.DirectoryScanWorker.runIfWatching(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Single navigation function for any top-level tab destination.
+    // Used by both the bottom-nav buttons and the Inbox setup-banner
+    // links, so tapping "Open Settings" from the banner produces the
+    // same back-stack shape as tapping the Settings tab — which in
+    // turn lets the user tap Inbox again to come back.
+    val navigateToTab: (String) -> Unit = { route ->
+        nav.navigate(route) {
+            popUpTo(nav.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     val destinations = listOf(
-        Dest("pipeline", stringResource(R.string.nav_pipeline)) { Icon(Icons.Outlined.Tune, null) },
         Dest("inbox", stringResource(R.string.nav_inbox)) {
             BadgedBox(badge = {
                 if (pendingCount > 0) Badge { Text(pendingCount.toString()) }
             }) { Icon(Icons.Outlined.Inbox, null) }
         },
+        Dest("pipeline", stringResource(R.string.nav_pipeline)) { Icon(Icons.Outlined.Tune, null) },
         Dest("history", stringResource(R.string.nav_history)) { Icon(Icons.Outlined.History, null) },
         Dest("settings", stringResource(R.string.nav_settings)) { Icon(Icons.Outlined.Settings, null) },
     )
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        // Match the body and TopAppBar colour so the chrome reads as one
+        // continuous surface — no visible band between the last card and the
+        // navigation bar. Default Material3 NavigationBar layers a 3.dp tonal
+        // tint on top of surfaceContainer, which made it visibly distinct
+        // even though the underlying colour token was the same.
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         bottomBar = {
             val showBar = destinations.any { it.route == currentRoute }
             if (showBar) {
-                NavigationBar {
+                val focus = LocalFocusManager.current
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    tonalElevation = 0.dp,
+                ) {
                     destinations.forEach { dest ->
+                        val isSelected = backStack?.destination?.hierarchy?.any { it.route == dest.route } == true
                         NavigationBarItem(
-                            selected = backStack?.destination?.hierarchy?.any { it.route == dest.route } == true,
+                            selected = isSelected,
                             onClick = {
-                                nav.navigate(dest.route) {
-                                    popUpTo(nav.graph.startDestinationId) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
+                                // Clear focus on every tab tap. Without this,
+                                // tapping the bar while a TextField (e.g. the
+                                // Settings URL field) was focused consumed the
+                                // first tap as 'dismiss the IME / blur', and
+                                // navigation only happened on the second tap.
+                                focus.clearFocus()
+                                // Reselecting the current tab is a no-op so we
+                                // don't churn the back stack with redundant
+                                // launchSingleTop entries.
+                                if (isSelected) return@NavigationBarItem
+                                navigateToTab(dest.route)
                             },
                             icon = dest.icon,
                             label = { Text(dest.label) },
@@ -132,11 +191,16 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
     ) { inner ->
         NavHost(
             navController = nav,
-            startDestination = "pipeline",
+            startDestination = "inbox",
             modifier = Modifier.padding(inner),
         ) {
+            composable("inbox") {
+                InboxScreen(
+                    onOpenSettings = { navigateToTab("settings") },
+                    onOpenPipeline = { navigateToTab("pipeline") },
+                )
+            }
             composable("pipeline") { PipelineScreen() }
-            composable("inbox") { InboxScreen() }
             composable("history") { HistoryScreen(onOpen = { id -> nav.navigate("history/$id") }) }
             composable("settings") { SettingsScreen() }
             composable("history/{id}") { entry ->

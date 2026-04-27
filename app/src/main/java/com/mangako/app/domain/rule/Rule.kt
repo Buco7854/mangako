@@ -87,6 +87,34 @@ sealed class Rule {
         override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
     }
 
+    /**
+     * Sets a single variable to a (interpolated) template string. Lets a
+     * pipeline propagate a corrected value forward without reading from
+     * source data — e.g. `%title% = %series%` after an upstream "fix
+     * generic titles" step. The value template can reference any
+     * variable that's already in scope, including the reserved
+     * `%__filename__%` / `%__filename_stem__%`.
+     *
+     * Logically it's the simplest possible mutation: assign a value to
+     * a name. Modeled as its own rule type rather than a special-case
+     * regex extraction so the editor and audit log can describe it
+     * plainly ("Set %title% to %series%") instead of via empty-pattern
+     * tricks.
+     */
+    @Serializable
+    @SerialName("set_variable")
+    data class SetVariable(
+        override val id: String,
+        override val enabled: Boolean = true,
+        override val label: String? = null,
+        val target: String,
+        val value: String,
+    ) : Rule() {
+        override fun displayName() = label ?: "Set %$target%"
+        override fun describe() = "%$target% = ${value.truncate(32)}"
+        override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
+    }
+
     @Serializable
     @SerialName("regex_replace")
     data class RegexReplace(
@@ -99,6 +127,65 @@ sealed class Rule {
     ) : Rule() {
         override fun displayName() = label ?: "Regex Replace"
         override fun describe() = "s/${pattern.truncate(24)}/${replacement.truncate(24)}/"
+        override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
+    }
+
+    /**
+     * Container of nested rules. Tap-to-edit opens an editor that lists the
+     * sub-rules and lets the user add / reorder / remove them — same shape
+     * as [ConditionalFormat]'s then/else sections but without the
+     * conditional gate. Useful for clustering N related steps under a
+     * label (e.g. 'Emoji flags → languages', 'Manhwa formatting') so the
+     * pipeline list doesn't sprawl.
+     *
+     * Execution: each sub-rule runs in order against the current
+     * filename + variables, and any side effects (variable updates,
+     * ComicInfo writes) bubble up to the parent.
+     */
+    @Serializable
+    @SerialName("group")
+    data class Group(
+        override val id: String,
+        override val enabled: Boolean = true,
+        override val label: String? = null,
+        val rules: List<Rule> = emptyList(),
+    ) : Rule() {
+        override fun displayName() = label ?: "Group"
+        override fun describe() = when (rules.size) {
+            0 -> "(empty group)"
+            1 -> "1 nested rule"
+            else -> "${rules.size} nested rules"
+        }
+        override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
+    }
+
+    /**
+     * Writes (or overwrites) elements inside the archive's ComicInfo.xml
+     * after the pipeline runs. Each entry in [fields] is `<KeyName>` →
+     * value template; the template is `%var%`-interpolated against the
+     * pipeline variables, so e.g. `Title=%__filename_stem__%` will set
+     * `<Title>` to whatever the rename pipeline produced (without the
+     * `.cbz` extension).
+     *
+     * The rule itself records the requested writes as a side effect on
+     * the [PipelineExecutor.Output]; the actual file rewrite happens in
+     * [com.mangako.app.work.ProcessCbzWorker] after the pipeline
+     * finishes, so this rule has no effect on the working filename.
+     */
+    @Serializable
+    @SerialName("write_comicinfo")
+    data class WriteComicInfo(
+        override val id: String,
+        override val enabled: Boolean = true,
+        override val label: String? = null,
+        val fields: Map<String, String> = emptyMap(),
+    ) : Rule() {
+        override fun displayName() = label ?: "Write to ComicInfo.xml"
+        override fun describe() = when (fields.size) {
+            0 -> "(no fields configured)"
+            1 -> "Set <${fields.keys.first()}> in ComicInfo.xml"
+            else -> "Set ${fields.size} fields in ComicInfo.xml"
+        }
         override fun withMeta(enabled: Boolean, label: String?) = copy(enabled = enabled, label = label)
     }
 

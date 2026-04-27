@@ -2,7 +2,7 @@ name: Build APKs
 
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -47,6 +47,19 @@ jobs:
       - name: Lint
         run: ./gradlew lintDebug --stacktrace --no-daemon
 
+      - name: Print lint failures
+        if: failure()
+        run: |
+          echo "=== reports dir ==="
+          ls -la app/build/reports/ 2>/dev/null || echo "(no reports dir)"
+          echo "=== lint files ==="
+          find app/build/reports -name 'lint-results-*' -print 2>/dev/null || true
+          for f in $(find app/build/reports -name 'lint-results-*.xml' 2>/dev/null); do
+            echo "::group::$f"
+            cat "$f"
+            echo "::endgroup::"
+          done
+
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --stacktrace --no-daemon
 
@@ -56,6 +69,17 @@ jobs:
         with:
           name: test-reports
           path: app/build/reports/tests/**/*
+          if-no-files-found: ignore
+
+      - name: Upload lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: |
+            app/build/reports/lint-results-*.html
+            app/build/reports/lint-results-*.xml
+            app/build/reports/lint-results-*.txt
           if-no-files-found: ignore
 
       - name: Assemble debug

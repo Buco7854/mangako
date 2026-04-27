@@ -1,31 +1,42 @@
 package com.mangako.app.ui.pipeline
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,29 +55,91 @@ fun EmptyState(
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        ElevatedCard(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(
+                    Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    stringResource(R.string.pipeline_hero_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    stringResource(R.string.pipeline_hero_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onLoadDefaults,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.AutoAwesome, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.pipeline_hero_use_standard))
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onAdd, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.Add, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.pipeline_hero_build_own))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Bottom-sheet picker for adding a new rule. Two-column grid of icon tiles —
+ * scannable at a glance with the rule's icon as primary identification, the
+ * label below it, and a one-line blurb under that for users who don't yet
+ * know what each rule type does.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun AddRuleSheet(onDismiss: () -> Unit, onPick: (RuleKind) -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        // Default BottomSheetDefaults.windowInsets covers the status bar but
+        // not the display cutout — on phones with a centred camera punch-hole
+        // the sheet's title is partly hidden behind the camera. Combining the
+        // system bars with the cutout pushes the whole content area below
+        // both. Bottom is included too so we don't draw under the gesture
+        // navigation pill.
+        contentWindowInsets = { WindowInsets.systemBars.union(WindowInsets.displayCutout) },
+    ) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 24.dp)) {
             Text(
-                stringResource(R.string.pipeline_empty_title),
+                stringResource(R.string.dialog_add_rule_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(
-                stringResource(R.string.pipeline_empty_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(20.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = onLoadDefaults) {
-                    Icon(Icons.Outlined.AutoAwesome, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.pipeline_lanraragi_standard))
-                }
-                OutlinedButton(onClick = onAdd) {
-                    Icon(Icons.Outlined.Add, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.pipeline_add_rule))
+            Spacer(Modifier.height(12.dp))
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(0.dp),
+            ) {
+                items(RuleKind.values().toList()) { kind ->
+                    RuleKindTile(kind = kind, onClick = { onPick(kind) })
                 }
             }
         }
@@ -74,39 +147,44 @@ fun EmptyState(
 }
 
 @Composable
-fun AddRuleRow(onAdd: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(12.dp),
-        horizontalArrangement = Arrangement.Center,
+private fun RuleKindTile(kind: RuleKind, onClick: () -> Unit) {
+    Card(
+        // Fixed height + an internal Column with weight on the blurb keeps
+        // every tile in the grid the same size regardless of how long the
+        // label or blurb wraps. Without it the row heights staggered and
+        // the picker looked messy.
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(150.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-        Button(onClick = onAdd) {
-            Icon(Icons.Outlined.Add, null)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.pipeline_add_rule))
+        Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
+            Icon(
+                imageVector = kind.icon,
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(kind.labelRes),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                stringResource(kind.blurbRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
-}
-
-@Composable
-fun AddRuleDialog(onDismiss: () -> Unit, onPick: (RuleKind) -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.rule_cancel)) } },
-        title = { Text(stringResource(R.string.dialog_add_rule_title)) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                RuleKind.values().forEach { kind ->
-                    ListItem(
-                        headlineContent = { Text(stringResource(kind.labelRes)) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp)
-                            .clickable { onPick(kind) },
-                    )
-                }
-            }
-        },
-    )
 }
 
 @Composable

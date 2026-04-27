@@ -1,8 +1,15 @@
 *.iml
 .claude/
 .gradle/
+.kotlin/
 build/
 /local.properties
+
+# The CI workflow generates the Gradle wrapper on-the-fly with
+# `gradle wrapper --gradle-version 8.9` so we deliberately don't commit it.
+/gradlew
+/gradlew.bat
+/gradle/wrapper/gradle-wrapper.jar
 /.idea/*
 !/.idea/codeStyles
 !/.idea/inspectionProfiles

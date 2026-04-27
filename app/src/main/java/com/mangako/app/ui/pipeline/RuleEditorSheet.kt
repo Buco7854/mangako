@@ -1,14 +1,26 @@
 package com.mangako.app.ui.pipeline
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -16,6 +28,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -29,12 +44,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mangako.app.R
 import com.mangako.app.domain.rule.Condition
 import com.mangako.app.domain.rule.Rule
+import com.mangako.app.ui.format.humanSubtitle
+import com.mangako.app.ui.format.humanTitle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,17 +60,37 @@ fun RuleEditorSheet(
     rule: Rule,
     onDismiss: () -> Unit,
     onSave: (Rule) -> Unit,
+    /** Optional delete affordance — used by the conditional editor to delete a
+     *  nested rule from inside its branch. Top-level rules don't pass this
+     *  because deletion happens from the rule card's overflow menu. */
+    onDelete: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var draft by remember(rule.id) { mutableStateOf(rule) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        contentWindowInsets = { WindowInsets.systemBars.union(WindowInsets.displayCutout) },
+    ) {
         Column(
             Modifier
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
-            Text(rule.displayName(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    draft.humanTitle(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                if (onDelete != null) {
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Outlined.Delete, stringResource(R.string.rule_delete_cd))
+                    }
+                }
+            }
             Spacer(Modifier.height(12.dp))
 
             LabelField(
@@ -64,7 +102,10 @@ fun RuleEditorSheet(
             when (val r = draft) {
                 is Rule.ExtractXmlMetadata -> MappingEditor(r) { draft = it }
                 is Rule.ExtractRegex -> ExtractRegexEditor(r) { draft = it }
+                is Rule.SetVariable -> SetVariableEditor(r) { draft = it }
                 is Rule.RegexReplace -> RegexEditor(r) { draft = it }
+                is Rule.Group -> GroupEditor(r) { draft = it }
+                is Rule.WriteComicInfo -> WriteComicInfoEditor(r) { draft = it }
                 is Rule.StringAppend -> SingleTextEditor(
                     stringResource(R.string.editor_append_label), r.text,
                 ) { draft = r.copy(text = it) }
@@ -109,6 +150,169 @@ private fun SingleTextEditor(label: String, value: String, onChange: (String) ->
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+/**
+ * Group editor — same shape as ConditionalEditor's BranchSection but
+ * without the THEN/ELSE split. Tapping a child opens its own editor
+ * sheet on top of this one (recursive bottom sheets handle the
+ * stacking); + opens the rule picker, then auto-edits the freshly
+ * added rule so the user lands on its configuration immediately.
+ */
+@Composable
+private fun GroupEditor(rule: Rule.Group, onChange: (Rule.Group) -> Unit) {
+    var editingNested by remember { mutableStateOf<Int?>(null) }
+    var pickingForGroup by remember { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            stringResource(R.string.editor_group_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (rule.rules.isEmpty()) {
+            Text(
+                stringResource(R.string.editor_group_empty),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            rule.rules.forEachIndexed { idx, child ->
+                NestedRuleRow(rule = child, onClick = { editingNested = idx })
+            }
+        }
+        OutlinedButton(onClick = { pickingForGroup = true }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.Add, null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.editor_group_add))
+        }
+    }
+
+    if (pickingForGroup) {
+        AddRuleSheet(
+            onDismiss = { pickingForGroup = false },
+            onPick = { kind ->
+                val newRule = newRuleOfKind(kind)
+                val updated = rule.copy(rules = rule.rules + newRule)
+                onChange(updated)
+                pickingForGroup = false
+                editingNested = updated.rules.lastIndex
+            },
+        )
+    }
+
+    editingNested?.let { idx ->
+        val nested = rule.rules.getOrNull(idx) ?: run { editingNested = null; return@let }
+        RuleEditorSheet(
+            rule = nested,
+            onDismiss = { editingNested = null },
+            onSave = { updatedNested ->
+                val newList = rule.rules.toMutableList().apply { this[idx] = updatedNested }
+                onChange(rule.copy(rules = newList))
+                editingNested = null
+            },
+            onDelete = {
+                val newList = rule.rules.toMutableList().apply { removeAt(idx) }
+                onChange(rule.copy(rules = newList))
+                editingNested = null
+            },
+        )
+    }
+}
+
+/**
+ * Editor for [Rule.WriteComicInfo]. Each row is one
+ * `<ElementName>` → value pair; both sides interpolate %vars% (the
+ * element name doesn't actually, but kept consistent for the user's
+ * mental model). Pre-seeded common keys (Title, Series, Writer) make
+ * the typical case a one-tap configuration.
+ */
+@Composable
+private fun WriteComicInfoEditor(rule: Rule.WriteComicInfo, onChange: (Rule.WriteComicInfo) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            stringResource(R.string.editor_writecomicinfo_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // Materialise as List<Pair<String, String>> so editing rows by
+        // index doesn't depend on Map iteration semantics. LinkedHashMap
+        // preserves insertion order, so toLinkedMap on the way back
+        // keeps the row ordering stable.
+        val entries: List<Pair<String, String>> = rule.fields.map { it.key to it.value }
+        entries.forEachIndexed { idx, entry ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = entry.first,
+                    onValueChange = { newKey ->
+                        val next = entries.toMutableList().also { it[idx] = newKey to it[idx].second }
+                        onChange(rule.copy(fields = next.toLinkedMap()))
+                    },
+                    label = { Text(stringResource(R.string.editor_writecomicinfo_field)) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = entry.second,
+                    onValueChange = { newValue ->
+                        val next = entries.toMutableList().also { it[idx] = it[idx].first to newValue }
+                        onChange(rule.copy(fields = next.toLinkedMap()))
+                    },
+                    label = { Text(stringResource(R.string.editor_writecomicinfo_value)) },
+                    modifier = Modifier.weight(1.2f),
+                    singleLine = true,
+                )
+                IconButton(onClick = {
+                    val next = entries.toMutableList().also { it.removeAt(idx) }
+                    onChange(rule.copy(fields = next.toLinkedMap()))
+                }) {
+                    Icon(Icons.Outlined.Delete, stringResource(R.string.rule_delete_cd))
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = {
+                val next = (entries + ("" to "")).toLinkedMap()
+                onChange(rule.copy(fields = next))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Outlined.Add, null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.editor_writecomicinfo_add))
+        }
+    }
+}
+
+private fun List<Pair<String, String>>.toLinkedMap(): Map<String, String> =
+    associateTo(LinkedHashMap()) { it }
+
+@Composable
+private fun SetVariableEditor(rule: Rule.SetVariable, onChange: (Rule.SetVariable) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            stringResource(R.string.editor_setvariable_help),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = rule.target,
+            onValueChange = { onChange(rule.copy(target = it)) },
+            label = { Text(stringResource(R.string.editor_setvariable_target)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = rule.value,
+            onValueChange = { onChange(rule.copy(value = it)) },
+            label = { Text(stringResource(R.string.editor_setvariable_value)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 @Composable
@@ -186,7 +390,7 @@ private fun TagRelocatorEditor(rule: Rule.TagRelocator, onChange: (Rule.TagReloc
                 readOnly = true,
                 label = { Text(stringResource(R.string.editor_relocator_move_to)) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(posExpanded) },
-                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
             )
             DropdownMenu(expanded = posExpanded, onDismissRequest = { posExpanded = false }) {
                 Rule.TagRelocator.Position.values().forEach { p ->
@@ -217,6 +421,13 @@ private fun TagRelocatorEditor(rule: Rule.TagRelocator, onChange: (Rule.TagReloc
 private fun ConditionalEditor(rule: Rule.ConditionalFormat, onChange: (Rule.ConditionalFormat) -> Unit) {
     val cond = rule.condition
     var opExpanded by remember { mutableStateOf(false) }
+
+    // Recursive nested-rule editing: we layer another editor sheet (or picker)
+    // on top of this one. State is local — the parent (this) only sees the
+    // updated thenRules/elseRules list when the nested editor's onSave fires.
+    var editingNested by remember { mutableStateOf<NestedTarget?>(null) }
+    var pickingFor by remember { mutableStateOf<Branch?>(null) }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.editor_condition), style = MaterialTheme.typography.labelLarge)
         OutlinedTextField(
@@ -232,7 +443,7 @@ private fun ConditionalEditor(rule: Rule.ConditionalFormat, onChange: (Rule.Cond
                 readOnly = true,
                 label = { Text(stringResource(R.string.editor_condition_operator)) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(opExpanded) },
-                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
             )
             DropdownMenu(expanded = opExpanded, onDismissRequest = { opExpanded = false }) {
                 Condition.Op.values().forEach { op ->
@@ -258,12 +469,163 @@ private fun ConditionalEditor(rule: Rule.ConditionalFormat, onChange: (Rule.Cond
             )
             Text(stringResource(R.string.editor_case_insensitive))
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            stringResource(R.string.editor_conditional_nested_hint, rule.thenRules.size, rule.elseRules.size),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+
+        Spacer(Modifier.height(4.dp))
+        BranchSection(
+            header = stringResource(R.string.editor_conditional_then_header),
+            rules = rule.thenRules,
+            onTap = { idx -> editingNested = NestedTarget(Branch.THEN, idx) },
+            onAdd = { pickingFor = Branch.THEN },
         )
+        BranchSection(
+            header = stringResource(R.string.editor_conditional_else_header),
+            rules = rule.elseRules,
+            onTap = { idx -> editingNested = NestedTarget(Branch.ELSE, idx) },
+            onAdd = { pickingFor = Branch.ELSE },
+        )
+    }
+
+    // Picker layered on top — picks a kind, materialises a rule, and immediately
+    // hands off to the editor sheet so the user lands on the configuration screen
+    // for the rule they just chose.
+    pickingFor?.let { branch ->
+        AddRuleSheet(
+            onDismiss = { pickingFor = null },
+            onPick = { kind ->
+                val newRule = newRuleOfKind(kind)
+                val updated = when (branch) {
+                    Branch.THEN -> rule.copy(thenRules = rule.thenRules + newRule)
+                    Branch.ELSE -> rule.copy(elseRules = rule.elseRules + newRule)
+                }
+                onChange(updated)
+                pickingFor = null
+                editingNested = NestedTarget(branch, indexOf = updated.let {
+                    if (branch == Branch.THEN) it.thenRules.lastIndex else it.elseRules.lastIndex
+                })
+            },
+        )
+    }
+
+    editingNested?.let { target ->
+        val list = if (target.branch == Branch.THEN) rule.thenRules else rule.elseRules
+        val nested = list.getOrNull(target.indexOf) ?: run {
+            editingNested = null
+            return@let
+        }
+        RuleEditorSheet(
+            rule = nested,
+            onDismiss = { editingNested = null },
+            onSave = { updatedNested ->
+                val newList = list.toMutableList().apply { this[target.indexOf] = updatedNested }
+                onChange(
+                    if (target.branch == Branch.THEN) rule.copy(thenRules = newList)
+                    else rule.copy(elseRules = newList),
+                )
+                editingNested = null
+            },
+            onDelete = {
+                val newList = list.toMutableList().apply { removeAt(target.indexOf) }
+                onChange(
+                    if (target.branch == Branch.THEN) rule.copy(thenRules = newList)
+                    else rule.copy(elseRules = newList),
+                )
+                editingNested = null
+            },
+        )
+    }
+}
+
+private enum class Branch { THEN, ELSE }
+
+private data class NestedTarget(val branch: Branch, val indexOf: Int)
+
+@Composable
+private fun BranchSection(
+    header: String,
+    rules: List<Rule>,
+    onTap: (Int) -> Unit,
+    onAdd: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(header, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        if (rules.isEmpty()) {
+            Text(
+                stringResource(R.string.editor_conditional_branch_empty),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            rules.forEachIndexed { idx, rule ->
+                NestedRuleRow(rule = rule, onClick = { onTap(idx) })
+            }
+        }
+        OutlinedButton(onClick = onAdd, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.Add, null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.editor_conditional_add_to_branch))
+        }
+    }
+}
+
+@Composable
+private fun NestedRuleRow(rule: Rule, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = rule.icon(),
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                rule.humanTitle(),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                rule.humanSubtitle(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private fun newRuleOfKind(kind: RuleKind): Rule {
+    val id = java.util.UUID.randomUUID().toString()
+    return when (kind) {
+        RuleKind.ExtractXml -> Rule.ExtractXmlMetadata(id = id)
+        RuleKind.ExtractRegex -> Rule.ExtractRegex(
+            id = id, source = "summary", target = "language", pattern = "",
+        )
+        RuleKind.SetVariable -> Rule.SetVariable(id = id, target = "title", value = "%series%")
+        RuleKind.Regex -> Rule.RegexReplace(id = id, pattern = "", replacement = "")
+        RuleKind.Group -> Rule.Group(id = id, label = "Group", rules = emptyList())
+        RuleKind.WriteComicInfo -> Rule.WriteComicInfo(
+            id = id,
+            label = "Write to ComicInfo.xml",
+            // Default to %title% so LANraragi shows the clean title that
+            // upstream rules already corrected (via SetVariable etc.),
+            // not the bracket-decorated archive filename.
+            fields = mapOf("Title" to "%title%"),
+        )
+        RuleKind.Append -> Rule.StringAppend(id = id, text = "")
+        RuleKind.Prepend -> Rule.StringPrepend(id = id, text = "")
+        RuleKind.Relocator -> Rule.TagRelocator(id = id, pattern = "")
+        RuleKind.Conditional -> Rule.ConditionalFormat(
+            id = id,
+            condition = Condition(variable = "genre", op = Condition.Op.CONTAINS, value = ""),
+        )
+        RuleKind.CleanWs -> Rule.CleanWhitespace(id = id)
     }
 }
 

@@ -20,6 +20,10 @@ data class HistoryRecord(
     val httpCode: Int?,
     val message: String?,
     val trail: AuditTrail,
+    /** Path to a cover thumbnail JPEG copied across from the Pending
+     *  row at processing time. Null when the row was created before
+     *  thumbnails existed, or when extraction failed. */
+    val thumbnailPath: String? = null,
 )
 
 @Singleton
@@ -30,7 +34,7 @@ class HistoryRepository @Inject constructor(private val dao: HistoryDao) {
 
     suspend fun find(id: String): HistoryRecord? = dao.findById(id)?.toRecord()
 
-    suspend fun record(trail: AuditTrail): String {
+    suspend fun record(trail: AuditTrail, thumbnailPath: String? = null): String {
         val id = UUID.randomUUID().toString()
         dao.insert(
             HistoryEntry(
@@ -42,6 +46,7 @@ class HistoryRepository @Inject constructor(private val dao: HistoryDao) {
                 httpCode = trail.uploadStatus.httpCode,
                 message = trail.uploadStatus.message,
                 auditJson = HistoryJson.encodeToString(trail),
+                thumbnailPath = thumbnailPath,
             )
         )
         return id
@@ -65,5 +70,6 @@ class HistoryRepository @Inject constructor(private val dao: HistoryDao) {
         httpCode = httpCode,
         message = message,
         trail = HistoryJson.decodeFromString(AuditTrail.serializer(), auditJson),
+        thumbnailPath = thumbnailPath,
     )
 }

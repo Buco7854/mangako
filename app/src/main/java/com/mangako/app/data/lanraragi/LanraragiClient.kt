@@ -10,15 +10,17 @@ import io.ktor.client.plugins.logging.DEFAULT
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
-import io.ktor.client.request.forms.ChannelProvider
-import io.ktor.client.request.forms.formData
-import io.ktor.client.request.forms.submitFormWithBinaryData
+import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.headersOf
+import io.ktor.http.content.PartData
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.util.cio.readChannel
 import kotlinx.serialization.Serializable
@@ -28,7 +30,11 @@ import java.util.Base64
 
 /**
  * Thin wrapper around the LANraragi HTTP API. We only use the upload endpoint
- * (`/api/archives/upload`) and let the server settle the archive ID & dedup.
+ * (`PUT /api/archives/upload`) and let the server settle the archive ID & dedup.
+ *
+ * The route is PUT, not POST — that mismatch is what was causing the 404s
+ * users were hitting; LANraragi's openapi.yaml registers the operation under
+ * the PUT verb and Mojolicious only matches the verb the spec declares.
  *
  * Auth: `Authorization: Bearer <base64(apiKey)>` per LANraragi docs. We
  * explicitly tell Ktor's logger to redact that header so the key never reaches
@@ -51,10 +57,20 @@ class LanraragiClient(
     )
 
     /**
-     * POST multipart upload of [file]. [uploadAs] is the filename the server
+     * PUT multipart upload of [file]. [uploadAs] is the filename the server
      * records; we strip path separators and control chars before putting it in
      * `Content-Disposition` so a misconfigured pipeline can't produce a
      * traversal-looking filename.
+     *
+     * Why we build [PartData] by hand instead of using Ktor's `formData {}`:
+     * `formData.append(key, value, headers)` always emits its own
+     * `Content-Disposition: form-data; name="$key"` header AND appends any
+     * Content-Disposition we pass in `headers`. The two end up on the wire
+     * as two separate Content-Disposition lines; Mojolicious comma-folds
+     * them and loses the field-name attribute, so [Mojo::Upload] gives back
+     * undef and LANraragi reports 'no file attached'. Constructing the
+     * PartData list directly lets us emit exactly one well-formed
+     * `Content-Disposition: form-data; name="file"; filename="..."`.
      */
     suspend fun uploadArchive(file: File, uploadAs: String): Result<UploadResponse> {
         require(file.exists()) { "File does not exist: ${file.path}" }
@@ -62,36 +78,82 @@ class LanraragiClient(
         val client = engine(UPLOAD_TIMEOUT_MS)
         return try {
             val endpoint = baseUrl.trimEnd('/') + "/api/archives/upload"
-            val response: HttpResponse = client.submitFormWithBinaryData(
-                url = endpoint,
-                formData = formData {
-                    append(
-                        key = "file",
-                        value = ChannelProvider(size = file.length()) { file.readChannel() },
-                        headers = headersOf(
-                            HttpHeaders.ContentType to listOf("application/vnd.comicbook+zip"),
-                            HttpHeaders.ContentDisposition to listOf(
-                                "filename=\"${safeName.escapeForContentDisposition()}\"",
-                            ),
-                        ),
-                    )
-                    append("title", safeName.removeSuffix(".cbz"))
-                },
+            val parts = listOf<PartData>(
+                PartData.BinaryChannelItem(
+                    provider = { file.readChannel() },
+                    partHeaders = Headers.build {
+                        append(
+                            HttpHeaders.ContentDisposition,
+                            "form-data; name=\"file\"; filename=\"${safeName.escapeForContentDisposition()}\"",
+                        )
+                        append(HttpHeaders.ContentType, "application/vnd.comicbook+zip")
+                    },
+                ),
+                PartData.FormItem(
+                    value = safeName.removeSuffix(".cbz"),
+                    dispose = {},
+                    partHeaders = Headers.build {
+                        append(HttpHeaders.ContentDisposition, "form-data; name=\"title\"")
+                    },
+                ),
             )
+            val response: HttpResponse = client.put(endpoint) {
+                setBody(MultiPartFormDataContent(parts))
+            }
             when (response.status) {
-                HttpStatusCode.OK -> Result.success(response.body<UploadResponse>())
-                else -> Result.failure(
-                    LanraragiException(
-                        code = response.status.value,
-                        message = "HTTP ${response.status.value}: ${response.status.description}",
-                    ),
-                )
+                HttpStatusCode.OK -> {
+                    val body = response.body<UploadResponse>()
+                    // The upload's `title` form field is only consulted by
+                    // LANraragi when the archive has no ComicInfo.xml. If
+                    // the .cbz carries a <Title>, LANraragi overwrites our
+                    // value with the embedded one (e.g. 'Chapter 39'),
+                    // which is exactly what the user noticed in the web
+                    // UI. Force the renamed filename to win by re-issuing
+                    // the metadata via the dedicated update endpoint —
+                    // the spec calls that out as 'overwrite previous data',
+                    // so it does win against ComicInfo.
+                    body.id?.let { archiveId ->
+                        runCatching {
+                            updateMetadata(client, archiveId, title = safeName.removeSuffix(".cbz"))
+                        }
+                    }
+                    Result.success(body)
+                }
+                else -> {
+                    val detail = runCatching { response.bodyAsText() }.getOrNull()?.trim().orEmpty()
+                    val msg = buildString {
+                        append("HTTP ").append(response.status.value)
+                        append(": ").append(response.status.description)
+                        if (detail.isNotEmpty()) append(" — ").append(detail.take(500))
+                    }
+                    Result.failure(LanraragiException(code = response.status.value, message = msg))
+                }
             }
         } catch (t: Throwable) {
             Result.failure(t)
         } finally {
             client.close()
         }
+    }
+
+    /**
+     * `PUT /api/archives/{id}/metadata?title=...` — overwrites the title
+     * field stored on the archive. We call this immediately after upload
+     * to ensure the renamed filename wins over any `<Title>` element in
+     * the .cbz's ComicInfo.xml (LANraragi's auto-extraction otherwise
+     * clobbers the value we send via the upload form).
+     *
+     * Best-effort: if it fails the upload itself still succeeded, so the
+     * caller wraps the call in runCatching and ignores the error.
+     */
+    private suspend fun updateMetadata(
+        client: HttpClient,
+        archiveId: String,
+        title: String,
+    ): HttpResponse = client.put(
+        baseUrl.trimEnd('/') + "/api/archives/" + archiveId + "/metadata",
+    ) {
+        url { parameters.append("title", title) }
     }
 
     /** Reachability probe for Settings → "Test connection". */

@@ -26,7 +26,7 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 val settings = settingsRepo.flow.first()
                 if (settings.watcherEnabled && settings.watchFolderUris.isNotEmpty()) {
-                    DirectoryScanWorker.schedule(context)
+                    DirectoryScanWorker.schedule(context, settings.watchFolderUris)
                 }
             } finally {
                 pendingResult.finish()

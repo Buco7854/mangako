@@ -45,9 +45,28 @@ object DefaultTemplate {
             //    %summary%.
             add(Rule.ExtractXmlMetadata(id = id()))
 
-            // 2. Fall back: pull language from <Summary> when
-            //    <LanguageISO> is missing. Matches "Language: English"
-            //    or "Languages: english". Defaults to English so the
+            // 2. Fall back: pull language from <Series> when
+            //    <LanguageISO> is missing. Mihon's NHentai source (and
+            //    similar) doesn't populate LanguageISO but writes a
+            //    structured Series like "[Author] Title [English]
+            //    [Group]". This grabs the [Language] tag out of that.
+            add(
+                Rule.ExtractRegex(
+                    id = id(),
+                    label = "Language fallback (from Series)",
+                    source = "series",
+                    target = "language",
+                    pattern = "\\[($LANG_ALT)\\]",
+                    group = 1,
+                    ignoreCase = true,
+                    onlyIfEmpty = true,
+                    defaultValue = "",
+                )
+            )
+
+            // 3. Fall back: pull language from <Summary> when nothing
+            //    earlier set it. Matches "Language: English" or
+            //    "Languages: english". Defaults to English so the
             //    filename always has a [Language] tag.
             add(
                 Rule.ExtractRegex(
@@ -63,11 +82,11 @@ object DefaultTemplate {
                 )
             )
 
-            // 3. Language fallback (from emoji flag in detected
+            // 4. Language fallback (from emoji flag in detected
             //    filename). Some sources tag with 🇯🇵 etc. instead
-            //    of populating ComicInfo. The outer condition guards
-            //    so this only fires when steps 1 & 2 left %language%
-            //    empty — but in practice step 2's defaultValue
+            //    of populating ComicInfo. Outer condition guards so
+            //    this only fires when steps 1–3 left %language%
+            //    empty — but in practice step 3's defaultValue
             //    always sets English, so this fires only if a user
             //    deletes the Summary fallback rule. Kept anyway as
             //    a defensible default for unusual pipelines.
@@ -100,17 +119,30 @@ object DefaultTemplate {
                 )
             )
 
-            // 4. Extract event / convention tag from the detected
-            //    filename — "(C96)", "(Comiket 102)", "(COMITIA 145)"
-            //    etc. Pulled out of the source filename and stashed
-            //    in %event% so the build template can prefix it back
-            //    onto the canonical name. Mirrors lrr-preprocess.sh's
-            //    $event_regex list verbatim.
-            //
-            //    onlyIfEmpty=true so a user-supplied %event% from the
-            //    Inbox edit-detection sheet wins over what's in the
-            //    filename. Without that override, the detection
-            //    extraction is the only source of this variable.
+            // 5. Extract event / convention tag, preferring <Series>
+            //    over the detected filename. Mihon's NHentai source
+            //    sometimes prefixes the Series with "(C96) [Artist]
+            //    Title …", and that's a more reliable source than
+            //    the filename which may just be "Chapter.cbz".
+            //    onlyIfEmpty=true so a user-supplied %event% from
+            //    the Inbox edit-detection sheet wins.
+            add(
+                Rule.ExtractRegex(
+                    id = id(),
+                    label = "Extract event tag from Series",
+                    source = "series",
+                    target = "event",
+                    pattern = "\\((?:COMIC[^)]*|C\\d+|Comiket[^)]*|COMITIA[^)]*|Reitaisai[^)]*|SPARK[^)]*|GATE[^)]*|Futaket[^)]*|Shuuki[^)]*|Natsu[^)]*|Fuyu[^)]*)\\)",
+                    group = 0,
+                    ignoreCase = false,
+                    onlyIfEmpty = true,
+                    defaultValue = "",
+                )
+            )
+
+            // 6. Same extraction against the detected filename, only
+            //    if Series didn't already provide one. Mirrors
+            //    lrr-preprocess.sh's $event_regex list verbatim.
             add(
                 Rule.ExtractRegex(
                     id = id(),
@@ -125,7 +157,7 @@ object DefaultTemplate {
                 )
             )
 
-            // 5. Compute %event_prefix% — "(C96) " (with trailing
+            // 7. Compute %event_prefix% — "(C96) " (with trailing
             //    space) when an event tag was found, otherwise
             //    empty. Lets the build template stay a single
             //    string: "%event_prefix%[%writer%] …" with no
@@ -158,14 +190,14 @@ object DefaultTemplate {
                 )
             )
 
-            // 6. Initialise %extra_tags% to empty when nothing else
+            // 8. Initialise %extra_tags% to empty when nothing else
             //    has set it. ExtractRegex below skips when both the
             //    capture and the default value are blank (its "no
             //    match and no default" short-circuit), and we don't
             //    want the literal "%extra_tags%" leaking into the
             //    filename for files without trailing tags. Wrapped in
-            //    a "only if empty" guard so a user-supplied override
-            //    from the Inbox edit-detection sheet survives.
+            //    an IS_EMPTY guard so a user-supplied override from
+            //    the Inbox edit-detection sheet survives.
             add(
                 Rule.ConditionalFormat(
                     id = id(),
@@ -186,19 +218,33 @@ object DefaultTemplate {
                 )
             )
 
-            // 7. Pull any trailing tags after the language bracket
-            //    out of the detected filename — "[Decensored]",
-            //    "[Color]", "[v2]" etc. — into %extra_tags%. They
-            //    don't belong on ComicInfo's <Title>, but they do
-            //    carry useful release info that should round-trip
-            //    onto the canonical filename. Captures everything
-            //    between "[<lang>]" and ".cbz" verbatim, including
-            //    any leading space, so the build template can
-            //    interpolate it as-is.
-            //
-            //    onlyIfEmpty=true so a user-supplied %extra_tags%
-            //    from the Inbox edit-detection sheet wins over what
-            //    detection extracted.
+            // 9. Pull trailing tags out of <Series> when it carries
+            //    them — Mihon's NHentai writes Series like "[Artist]
+            //    Title [English] [Project Valvrein]", and the
+            //    "[Project Valvrein]" group / translator tag belongs
+            //    on the rebuilt filename even though the detected
+            //    .cbz name is just "Chapter.cbz". Captures
+            //    everything between the language bracket and the end
+            //    of Series, with leading space, ready to drop into
+            //    the build template.
+            add(
+                Rule.ExtractRegex(
+                    id = id(),
+                    label = "Extract trailing tags from Series",
+                    source = "series",
+                    target = "extra_tags",
+                    pattern = "\\[(?:$LANG_ALT)\\](.*)$",
+                    group = 1,
+                    ignoreCase = true,
+                    onlyIfEmpty = true,
+                    defaultValue = "",
+                )
+            )
+
+            // 10. Same extraction against the detected filename, only
+            //     if Series didn't already produce trailing tags.
+            //     Captures everything between "[<lang>]" and ".cbz"
+            //     verbatim.
             add(
                 Rule.ExtractRegex(
                     id = id(),
@@ -217,10 +263,21 @@ object DefaultTemplate {
             // Phase 2: Compute the human %title%
             // ─────────────────────────────────────────────
 
-            // 8. Generic title fix: when Mihon embeds the chapter
-            //    label as <Title> (e.g. "Chapter 39", "Ch.3"), promote
-            //    %series% into %title%. Mirrors fix_comicinfo_title in
-            //    mihon.sh.
+            // 11. Generic title fix: when Mihon embeds the chapter
+            //     label as <Title> (e.g. "Chapter 39", "Ch.3"),
+            //     promote a cleaned-up %series% into %title%.
+            //     Mirrors fix_comicinfo_title in mihon.sh.
+            //
+            //     "Cleaned-up" means: strip a leading "[Artist]" tag
+            //     and any trailing "[Lang] [Group]" brackets so we
+            //     end up with just the title meat. For Mihon's
+            //     NHentai source <Series> reads
+            //     "[Jzargo] Shizue Sonoato. | Shizue afterwards
+            //     [English] [Project Valvrein]" — we want %title%
+            //     to be just "Shizue Sonoato. | Shizue afterwards",
+            //     not the whole bracket-decorated string. Falls
+            //     back to %series% verbatim if the regex doesn't
+            //     match a bracket structure.
             add(
                 Rule.ConditionalFormat(
                     id = id(),
@@ -232,21 +289,27 @@ object DefaultTemplate {
                         ignoreCase = true,
                     ),
                     thenRules = listOf(
-                        Rule.SetVariable(
+                        Rule.ExtractRegex(
                             id = id(),
-                            label = "Set %title% to %series%",
+                            label = "Strip brackets out of %series% into %title%",
+                            source = "series",
                             target = "title",
-                            value = "%series%",
+                            pattern = "^(?:\\([^)]*\\)\\s+)?(?:\\[[^\\]]+\\]\\s+)?(.+?)(?:\\s+\\[[^\\]]+\\])*\\s*$",
+                            group = 1,
+                            ignoreCase = false,
+                            onlyIfEmpty = false,
+                            defaultValue = "%series%",
                         ),
                     ),
                 )
             )
 
-            // 9. Manhwa: append " Ch %number%" so the title carries
-            //    chapter granularity ("My Series Ch 39"). The filename
-            //    template below picks up %title% verbatim, so this is
-            //    the single place that controls how chapter info
-            //    appears in both filename and ComicInfo.
+            // 12. Manhwa: append " Ch %number%" so the title
+            //     carries chapter granularity ("My Series Ch 39").
+            //     The filename template below picks up %title%
+            //     verbatim, so this is the single place that
+            //     controls how chapter info appears in both filename
+            //     and ComicInfo.
             add(
                 Rule.ConditionalFormat(
                     id = id(),
@@ -271,13 +334,13 @@ object DefaultTemplate {
             // Phase 3: Helper variables for the template
             // ─────────────────────────────────────────────
 
-            // 10. Manhwa: ensure "[Manhwa]" lives in %extra_tags%
-            //    when genre says manhwa AND it isn't there already.
-            //    %extra_tags% is the same bag of trailing tags the
-            //    detection step extracted from the filename, so by
-            //    routing the manhwa decision through it we
-            //    automatically dedupe a [Manhwa] that was already
-            //    on the source filename.
+            // 13. Manhwa: ensure "[Manhwa]" lives in %extra_tags%
+            //     when genre says manhwa AND it isn't there
+            //     already. %extra_tags% is the same bag of trailing
+            //     tags detection extracted, so by routing the
+            //     manhwa decision through it we automatically
+            //     dedupe a [Manhwa] that was already on the source
+            //     filename or in <Series>.
             add(
                 Rule.ConditionalFormat(
                     id = id(),
@@ -314,16 +377,16 @@ object DefaultTemplate {
             // Phase 4: Build the filename
             // ─────────────────────────────────────────────
 
-            // 11. Compose the final filename in one place. Setting
-            //    %__filename__% mutates the working filename string,
-            //    so this single template is what becomes the upload
-            //    name. Everything before this step prepares the
-            //    variables it interpolates.
+            // 14. Compose the final filename in one place. Setting
+            //     %__filename__% mutates the working filename
+            //     string, so this single template is what becomes
+            //     the upload name. Everything before this step
+            //     prepares the variables it interpolates.
             //
-            //    %extra_tags% already includes its own leading
-            //    space (captured verbatim from the detected
-            //    filename, or prepended by the manhwa step above),
-            //    so the template doesn't add one before it.
+            //     %extra_tags% already includes its own leading
+            //     space (captured verbatim from Series or the
+            //     filename, or prepended by the manhwa step above),
+            //     so the template doesn't add one before it.
             add(
                 Rule.SetVariable(
                     id = id(),
@@ -337,8 +400,14 @@ object DefaultTemplate {
             // Phase 5: Hygiene
             // ─────────────────────────────────────────────
 
-            // 12. Strip Windows-unsafe filename chars so LANraragi's
-            //     client-side dedup never chokes on a stray colon.
+            // 15. Strip Windows-unsafe filename chars so LANraragi's
+            //     client-side dedup never chokes on a stray colon
+            //     (and the volume stays portable to NTFS-mounted
+            //     backups). Note: this only runs against the
+            //     filename string — the underlying %title%
+            //     variable keeps its original chars, so e.g. a "|"
+            //     in a romaji-vs-English title separator survives
+            //     into ComicInfo's <Title>.
             add(
                 Rule.RegexReplace(
                     id = id(),
@@ -348,17 +417,18 @@ object DefaultTemplate {
                 )
             )
 
-            // 13. Collapse runs of whitespace + trim. Catches the empty
-            //     event-prefix case where the template leaves a leading
-            //     space, plus any double spaces from concatenating
-            //     %extra_tags%.
+            // 16. Collapse runs of whitespace + trim. Catches the
+            //     empty event-prefix case where the template leaves
+            //     a leading space, plus any double spaces from the
+            //     sanitise step removing illegal chars from inside
+            //     the title.
             add(Rule.CleanWhitespace(id = id(), trim = true))
 
             // ─────────────────────────────────────────────
             // Phase 6: Sync ComicInfo
             // ─────────────────────────────────────────────
 
-            // 14. Write %title% into ComicInfo's <Title> and clear
+            // 17. Write %title% into ComicInfo's <Title> and clear
             //     <Series>. Without the Title write, LANraragi's
             //     auto-extraction keeps showing Mihon's "Chapter 39";
             //     without the Series clear it groups uploads by

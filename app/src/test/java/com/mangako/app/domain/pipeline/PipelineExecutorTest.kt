@@ -382,6 +382,38 @@ class PipelineExecutorTest {
         assertEquals("Series Ch 1", out.comicInfoUpdates["Title"])
     }
 
+    @Test fun `default template mines a Mihon NHentai-style Series field`() {
+        // Mihon's NHentai source bundles everything we need into
+        // <Series> as a structured filename-like string and leaves
+        // <Title> as the generic "Chapter" label. The pipeline should
+        // recognise that and pull the title meat, language, and
+        // trailing translator group tag out of <Series>.
+        val cfg = DefaultTemplate.lanraragiStandard()
+        val out = executor.run(
+            cfg,
+            PipelineExecutor.Input(
+                originalFilename = "Chapter.cbz",
+                metadata = mapOf(
+                    "title" to "Chapter",
+                    "series" to "[Jzargo] Shizue Sonoato. | Shizue afterwards [English] [Project Valvrein]",
+                    "writer" to "jzargo",
+                    "genre" to "doujinshi",
+                    // No language — extracted from Series.
+                ),
+            ),
+        )
+        assertEquals("English", out.variables["language"])
+        // The "|" gets stripped from the filename by the sanitise step
+        // (it's Windows-illegal) but stays in the %title% variable, so
+        // ComicInfo's <Title> keeps the pipe — useful for romaji vs.
+        // English title separation.
+        assertEquals(
+            "[jzargo] Shizue Sonoato. Shizue afterwards [English] [Project Valvrein].cbz",
+            out.finalFilename,
+        )
+        assertEquals("Shizue Sonoato. | Shizue afterwards", out.comicInfoUpdates["Title"])
+    }
+
     @Test fun `default template handles a non-manhwa upload`() {
         // No "Manhwa" in genre → no chapter token in the title and no
         // [Manhwa] suffix on the filename.

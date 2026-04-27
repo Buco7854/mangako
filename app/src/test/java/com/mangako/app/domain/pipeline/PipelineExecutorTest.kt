@@ -280,18 +280,19 @@ class PipelineExecutorTest {
         assertEquals("", out.comicInfoUpdates["Series"])
     }
 
-    @Test fun `default template preserves an event tag on the rebuilt filename`() {
-        // Detected filename carries "(C96)" which isn't in ComicInfo;
-        // the pipeline's event-extract step should pull it into a
-        // variable and the build template should re-emit it as the
-        // filename's leading prefix.
+    @Test fun `default template preserves an event tag carried in Title`() {
+        // <Title> carries "(C96)" — the event-extract step pulls it
+        // into %event% from %title% and the build template re-emits
+        // it as the filename's leading prefix. (Detection-time
+        // filenames are no longer mined; the pipeline trusts
+        // ComicInfo as the source of truth.)
         val cfg = DefaultTemplate.lanraragiStandard()
         val out = executor.run(
             cfg,
             PipelineExecutor.Input(
-                originalFilename = "[Artist] Title (C96).cbz",
+                originalFilename = "Chapter.cbz",
                 metadata = mapOf(
-                    "title" to "Title",
+                    "title" to "(C96) Title",
                     "series" to "Series",
                     "writer" to "Artist",
                     "language" to "Japanese",
@@ -301,51 +302,38 @@ class PipelineExecutorTest {
         assertEquals("(C96) [Artist] Title [Japanese].cbz", out.finalFilename)
     }
 
-    @Test fun `default template falls back to emoji flag for language`() {
-        // No language in ComicInfo and no Summary fallback hit; the
-        // emoji-flag conditional should set %language% from 🇯🇵 in
-        // the detected filename.
+    @Test fun `default template falls back to English when ComicInfo has no language`() {
+        // No language anywhere and Title carries no [Lang] bracket;
+        // the Summary fallback's defaultValue=English fires last
+        // and gives the filename a deterministic [English] tag.
         val cfg = DefaultTemplate.lanraragiStandard()
         val out = executor.run(
             cfg,
             PipelineExecutor.Input(
-                originalFilename = "[Artist] Title 🇯🇵.cbz",
+                originalFilename = "Chapter.cbz",
                 metadata = mapOf(
                     "title" to "Title",
                     "series" to "Series",
                     "writer" to "Artist",
-                    // Setting summary to a string with no Language: line
-                    // skips the Summary fallback. Without language in
-                    // metadata, the executor seeds it as empty so the
-                    // Summary rule's defaultValue would fire — to test
-                    // emoji we have to delete the Summary rule, but
-                    // here we just rely on the chain firing in order.
-                    // The Summary rule's default of "English" actually
-                    // wins in the default template, so this assertion
-                    // documents real behaviour rather than a contrived
-                    // ideal.
                 ),
             ),
         )
-        // The Summary fallback's defaultValue=English fires before the
-        // emoji-flag chain has a chance, so the rebuilt filename
-        // shows [English]. The emoji rule remains in the pipeline as
-        // a defensible default if the user deletes the Summary rule.
         assertEquals("[Artist] Title [English].cbz", out.finalFilename)
     }
 
-    @Test fun `default template preserves trailing tags from the detected filename`() {
-        // [Decensored] / [Color] / [v2] etc. live after the language
-        // bracket on the source filename — the pipeline should pull
-        // them into %extra_tags% and re-emit them after the rebuilt
-        // [Language] tag, but keep ComicInfo's <Title> clean.
+    @Test fun `default template preserves trailing tags carried in Title`() {
+        // [Decensored] / [Color] / [v2] etc. live after the
+        // language bracket on Title — the trailing-tags extract
+        // step pulls them into %extra_tags% and re-emits them
+        // after the rebuilt [Language] tag, but keeps ComicInfo's
+        // <Title> clean (just the meat).
         val cfg = DefaultTemplate.lanraragiStandard()
         val out = executor.run(
             cfg,
             PipelineExecutor.Input(
-                originalFilename = "[Artist] Title [English] [Decensored] [v2].cbz",
+                originalFilename = "Chapter.cbz",
                 metadata = mapOf(
-                    "title" to "Title",
+                    "title" to "Title [English] [Decensored] [v2]",
                     "series" to "Series",
                     "writer" to "Artist",
                     "language" to "English",
@@ -412,6 +400,30 @@ class PipelineExecutorTest {
             out.finalFilename,
         )
         assertEquals("Shizue Sonoato. | Shizue afterwards", out.comicInfoUpdates["Title"])
+    }
+
+    @Test fun `default template mines Title when it carries the rich string instead of Series`() {
+        // Some Mihon sources put the bracket-decorated string into
+        // <Title> instead of <Series>. Language and trailing tags
+        // should still be picked up via the Title fallback chain.
+        val cfg = DefaultTemplate.lanraragiStandard()
+        val out = executor.run(
+            cfg,
+            PipelineExecutor.Input(
+                originalFilename = "Chapter.cbz",
+                metadata = mapOf(
+                    "title" to "(C96) [Author] Real Title [English] [Group]",
+                    "series" to "Series Name",
+                    "writer" to "Author",
+                    "genre" to "doujinshi",
+                ),
+            ),
+        )
+        // %language% pulled from the [English] in Title.
+        assertEquals("English", out.variables["language"])
+        // Event tag and trailing [Group] both round-tripped from Title.
+        assertEquals("(C96)", out.variables["event"])
+        assertEquals("(C96) [Author] Real Title [English] [Group].cbz", out.finalFilename)
     }
 
     @Test fun `default template handles a non-manhwa upload`() {

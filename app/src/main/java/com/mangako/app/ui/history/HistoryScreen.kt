@@ -158,7 +158,6 @@ private fun StatusDot(ok: Boolean) {
  *  a neutral icon when the file isn't there (legacy row, copy failed). */
 @Composable
 private fun HistoryThumbnail(path: String?) {
-    val ctx = LocalContext.current
     Box(
         modifier = Modifier
             .size(width = 48.dp, height = 64.dp)
@@ -169,7 +168,7 @@ private fun HistoryThumbnail(path: String?) {
         val file = path?.let { File(it).takeIf(File::exists) }
         if (file != null) {
             AsyncImage(
-                model = ImageRequest.Builder(ctx).data(file).build(),
+                model = file,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),

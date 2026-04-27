@@ -122,6 +122,21 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // Single navigation function for any top-level tab destination.
+    // Used by both the bottom-nav buttons and the Inbox setup-banner
+    // links, so tapping "Open Settings" from the banner produces the
+    // same back-stack shape as tapping the Settings tab — which in
+    // turn lets the user tap Inbox again to come back.
+    val navigateToTab: (String) -> Unit = { route ->
+        nav.navigate(route) {
+            popUpTo(nav.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     val destinations = listOf(
         Dest("inbox", stringResource(R.string.nav_inbox)) {
             BadgedBox(badge = {
@@ -164,13 +179,7 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
                                 // don't churn the back stack with redundant
                                 // launchSingleTop entries.
                                 if (isSelected) return@NavigationBarItem
-                                nav.navigate(dest.route) {
-                                    popUpTo(nav.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
+                                navigateToTab(dest.route)
                             },
                             icon = dest.icon,
                             label = { Text(dest.label) },
@@ -187,8 +196,8 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
         ) {
             composable("inbox") {
                 InboxScreen(
-                    onOpenSettings = { nav.navigate("settings") },
-                    onOpenPipeline = { nav.navigate("pipeline") },
+                    onOpenSettings = { navigateToTab("settings") },
+                    onOpenPipeline = { navigateToTab("pipeline") },
                 )
             }
             composable("pipeline") { PipelineScreen() }

@@ -204,19 +204,40 @@ class InboxViewModel @Inject constructor(
      * so the Inbox card can show "what's about to land in LANraragi"
      * without lying.
      *
-     * Falls back to the detected filename (sans .cbz) when the
-     * pipeline produces no title or detection couldn't read
-     * ComicInfo at all — better than rendering a blank card.
+     * Fallback chain (high → low):
+     *   1. Pipeline-simulated %title% (when the pipeline ran cleanly)
+     *   2. ComicInfo's <Title> + the user's title override (raw)
+     *   3. The detected filename minus .cbz
+     *
+     * "Cleanly" means the result is non-blank AND doesn't contain
+     * any unresolved %token% literals — those slip through when a
+     * SetVariable rule references a variable that wasn't populated
+     * (e.g. manhwa formatting reading %number% on a file with no
+     * <Number> tag). When that happens we'd rather show the user
+     * the ComicInfo title than a half-substituted template string.
      */
     private fun simulateTitle(config: PipelineConfig, file: PendingFile): String {
-        if (config.rules.isEmpty()) return file.name.removeSuffix(".cbz")
+        val rawTitle = file.metadataOverrides["title"]?.takeIf { it.isNotBlank() }
+            ?: file.metadata["title"]?.takeIf { it.isNotBlank() }
+        val filenameStem = file.name.removeSuffix(".cbz")
+
+        if (config.rules.isEmpty()) return rawTitle ?: filenameStem
+
         val merged = file.metadata + file.metadataOverrides
         val out = PipelineExecutor().run(
             config,
             PipelineExecutor.Input(originalFilename = file.name, metadata = merged),
         )
-        return out.variables["title"]
-            ?.takeIf { it.isNotBlank() }
-            ?: file.name.removeSuffix(".cbz")
+        val simulated = out.variables["title"]
+        return simulated?.takeIf { it.isNotBlank() && !UNRESOLVED_TOKEN.containsMatchIn(it) }
+            ?: rawTitle
+            ?: filenameStem
+    }
+
+    private companion object {
+        /** Detects "%name%" tokens that survived interpolation — the
+         *  pipeline only substitutes vars that exist in the map; any
+         *  reference to a missing key passes through verbatim. */
+        private val UNRESOLVED_TOKEN = Regex("%[a-zA-Z_][a-zA-Z0-9_]*%")
     }
 }

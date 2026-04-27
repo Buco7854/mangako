@@ -144,7 +144,6 @@ private fun Header(rec: HistoryRecord) {
 
 @Composable
 private fun DetailThumbnail(path: String?) {
-    val ctx = LocalContext.current
     val file = path?.let { File(it).takeIf(File::exists) }
     Box(
         modifier = Modifier
@@ -155,7 +154,7 @@ private fun DetailThumbnail(path: String?) {
     ) {
         if (file != null) {
             AsyncImage(
-                model = ImageRequest.Builder(ctx).data(file).build(),
+                model = file,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),

@@ -452,10 +452,10 @@ private fun PendingCard(
 
 /** Square-ish cover preview rendered from a JPEG the watcher saved
  *  at detection time. Falls back to a neutral placeholder when the
- *  thumbnail file isn't there (couldn't extract, file was deleted). */
+ *  thumbnail file isn't there (couldn't extract, file was deleted,
+ *  or the row predates thumbnail support). */
 @Composable
 private fun CoverThumbnail(path: String?, modifier: Modifier = Modifier) {
-    val ctx = LocalContext.current
     Box(
         modifier = modifier
             .size(width = 56.dp, height = 80.dp)
@@ -465,8 +465,12 @@ private fun CoverThumbnail(path: String?, modifier: Modifier = Modifier) {
     ) {
         val file = path?.let { File(it).takeIf(File::exists) }
         if (file != null) {
+            // Coil's File source — it stat()s and decodes on a
+            // background thread, then composes the bitmap into the
+            // box. crossfade keeps the swap between Cards smooth as
+            // the LazyColumn scrolls.
             AsyncImage(
-                model = ImageRequest.Builder(ctx).data(file).build(),
+                model = file,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),

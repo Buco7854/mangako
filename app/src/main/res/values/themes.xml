@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose draws everything; the parent keeps the activity transparent while it boots. -->
+    <style name="Theme.Mangako" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">?android:colorBackground</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

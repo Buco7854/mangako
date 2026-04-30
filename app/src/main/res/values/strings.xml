@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Mangako</string>
+
+    <!-- Navigation -->
+    <string name="nav_inbox">Inbox</string>
+    <string name="nav_pipeline">Pipeline</string>
+    <string name="nav_history">History</string>
+    <string name="nav_settings">Settings</string>
+
+
+    <!-- Pipeline screen -->
+    <string name="pipeline_title">Pipeline</string>
+    <string name="pipeline_overflow_cd">More actions</string>
+    <string name="pipeline_live_preview">Live preview</string>
+    <string name="pipeline_live_preview_hint">Type a sample filename to see what your rules would produce.</string>
+    <string name="pipeline_input_filename">Sample filename</string>
+    <string name="pipeline_hero_title">Rename your manga downloads</string>
+    <string name="pipeline_hero_body">Mangako can apply the LANraragi naming convention out of the box, or you can build your own renaming rules step by step.</string>
+    <string name="pipeline_hero_use_standard">Use the LANraragi standard</string>
+    <string name="pipeline_hero_build_own">Or build your own</string>
+    <string name="pipeline_add_rule">Add rule</string>
+    <string name="pipeline_copy_json">Copy JSON</string>
+    <string name="pipeline_export">Export</string>
+    <string name="pipeline_import">Import</string>
+    <string name="pipeline_load_defaults_cd">Load LANraragi Standard</string>
+    <string name="pipeline_json_copied">JSON copied to clipboard</string>
+    <string name="pipeline_exported_to">Exported to %1$s</string>
+    <string name="pipeline_empty_preview">(empty)</string>
+
+    <!-- Rule list / cards -->
+    <string name="rule_reorder_cd">Drag to reorder</string>
+    <string name="rule_edit_cd">Edit</string>
+    <string name="rule_delete_cd">Delete</string>
+    <string name="rule_cancel">Cancel</string>
+    <string name="rule_save">Save</string>
+    <string name="rule_more_actions">More actions for this step</string>
+    <string name="rule_state_on">On</string>
+    <string name="rule_state_off">Off</string>
+    <string name="rule_delete_confirm_title">Delete this step?</string>
+    <string name="rule_delete_confirm_body">\"%1$s\" will be removed from your pipeline. You can\'t undo this.</string>
+
+    <!-- Pipeline steps section -->
+    <string name="pipeline_steps_header">Steps · %1$d</string>
+
+    <!-- Rule editor -->
+    <string name="editor_label_optional">Label (optional)</string>
+    <string name="editor_regex_pattern">Pattern (regex)</string>
+    <string name="editor_regex_replacement">Replacement (supports %%var%%)</string>
+    <string name="editor_case_insensitive">Case-insensitive</string>
+    <string name="editor_append_label">Text to append</string>
+    <string name="editor_prepend_label">Text to prepend</string>
+    <string name="editor_relocator_separator">Separator</string>
+    <string name="editor_relocator_group">Capture group (0 = whole match)</string>
+    <string name="editor_relocator_move_to">Move to</string>
+    <string name="editor_condition">Condition</string>
+    <string name="editor_condition_variable">Variable (e.g. genre, title, __filename__)</string>
+    <string name="editor_condition_operator">Operator</string>
+    <string name="editor_condition_value">Value</string>
+    <string name="editor_xml_mapping_variable">Variable</string>
+    <string name="editor_xml_mapping_element">XML element</string>
+    <string name="editor_xml_description">Reads ComicInfo.xml and exposes each mapping as a %%variable%%.</string>
+    <string name="editor_conditional_nested_hint">This rule runs %1$d rule(s) in the THEN branch and %2$d in the ELSE branch. Nested rules are configured via JSON export/import for now.</string>
+    <string name="editor_extract_description">Extracts a value from one variable into another. Useful for fields the XML buries in prose (e.g. \"Languages: English\" in Summary).</string>
+    <string name="editor_extract_source">Source variable</string>
+    <string name="editor_extract_target">Target variable</string>
+    <string name="editor_extract_pattern">Pattern (empty = copy whole source)</string>
+    <string name="editor_extract_group">Capture group</string>
+    <string name="editor_extract_default">Default (if no match)</string>
+    <string name="editor_extract_only_if_empty">Only write if %%%1$s%% is empty</string>
+    <string name="editor_cleanws_trim">Also trim leading/trailing whitespace</string>
+    <string name="editor_group_help">Nested rules run top-to-bottom against the working filename, just like the top-level pipeline.</string>
+    <string name="editor_group_empty">No rules in this group yet — tap below to add one.</string>
+    <string name="editor_group_add">Add a rule</string>
+    <string name="editor_writecomicinfo_help" formatted="false">Each row sets one ComicInfo.xml element. Use %var% to interpolate pipeline variables, e.g. %__filename_stem__% for the renamed filename without .cbz.</string>
+    <string name="editor_writecomicinfo_field">Element name</string>
+    <string name="editor_writecomicinfo_value">Value template</string>
+    <string name="editor_writecomicinfo_add">Add a field</string>
+
+    <!-- Add rule / Import dialogs -->
+    <string name="dialog_add_rule_title">Add rule</string>
+    <string name="dialog_import_title">Import pipeline</string>
+    <string name="dialog_import_body">Paste an exported JSON or pick a file.</string>
+    <string name="dialog_import_json_label">JSON</string>
+    <string name="dialog_import_button">Import JSON</string>
+    <string name="dialog_import_button_busy">Importing…</string>
+    <string name="dialog_import_pick_file">Pick file…</string>
+    <string name="dialog_import_error">That JSON couldn\'t be parsed. Double-check the schema and try again.</string>
+    <string name="rule_kind_extract_xml">Read ComicInfo</string>
+    <string name="rule_kind_extract_xml_blurb">Load Title, Series, Writer, etc. from the archive</string>
+    <string name="rule_kind_extract_regex">Extract value</string>
+    <string name="rule_kind_extract_regex_blurb">Pull a value out of one variable into another</string>
+    <string name="rule_kind_setvariable">Set a value</string>
+    <string name="rule_kind_setvariable_blurb">Copy a (possibly built-up) value into a variable</string>
+    <string name="editor_setvariable_help" formatted="false">Sets a variable to the given value. The value can reference other variables using %name% — for example, set %title% to %series% to mirror what fix_comicinfo_title does in the bash scripts.</string>
+    <string name="editor_setvariable_target">Variable to set</string>
+    <string name="editor_setvariable_value" formatted="false">New value (use %var% tokens)</string>
+    <string name="rule_kind_regex">Find &amp; replace</string>
+    <string name="rule_kind_regex_blurb">Match a pattern and rewrite it</string>
+    <string name="rule_kind_group">Group</string>
+    <string name="rule_kind_group_blurb">Cluster nested rules under one label — purely organisational</string>
+    <string name="rule_kind_writecomicinfo">Write to ComicInfo.xml</string>
+    <string name="rule_kind_writecomicinfo_blurb">Set Title, Series, etc. inside the .cbz before upload</string>
+    <string name="rule_kind_append">Append text</string>
+    <string name="rule_kind_append_blurb">Add text to the end of the filename</string>
+    <string name="rule_kind_prepend">Prepend text</string>
+    <string name="rule_kind_prepend_blurb">Add text to the start of the filename</string>
+    <string name="rule_kind_relocator">Move tag</string>
+    <string name="rule_kind_relocator_blurb">Reposition something like (C96) to the front or end</string>
+    <string name="rule_kind_conditional">If / else</string>
+    <string name="rule_kind_conditional_blurb">Run different rules depending on a condition</string>
+    <string name="rule_kind_cleanws">Tidy whitespace</string>
+    <string name="rule_kind_cleanws_blurb">Collapse double spaces and trim the ends</string>
+
+    <!-- Rule overflow menu -->
+    <string name="rule_move_up">Move up</string>
+    <string name="rule_move_down">Move down</string>
+
+    <!-- Conditional editor: nested branches -->
+    <string name="editor_conditional_then_header">If true</string>
+    <string name="editor_conditional_else_header">Otherwise</string>
+    <string name="editor_conditional_branch_empty">No nested rules yet</string>
+    <string name="editor_conditional_add_to_branch">Add a rule</string>
+
+    <!-- Try-pipeline sheet (dry run) -->
+    <string name="pipeline_try_cd">Test pipeline</string>
+    <string name="pipeline_try_title">Test the pipeline</string>
+    <string name="pipeline_try_subtitle">Pick a real .cbz to see exactly how it would be renamed, or type a sample filename below.</string>
+    <string name="pipeline_try_sample_header">Sample filename</string>
+    <string name="pipeline_try_result_header">Result</string>
+    <string name="pipeline_try_vars_header">Available variables</string>
+    <string name="pipeline_preview_pick_file">Pick a real .cbz</string>
+    <string name="pipeline_preview_loading">Reading file…</string>
+    <string name="pipeline_preview_reset">Use sample</string>
+    <string name="pipeline_preview_source">Loaded from %1$s</string>
+
+    <!-- Reorder mode -->
+    <string name="pipeline_title_reorder">Reorder steps</string>
+    <string name="pipeline_reorder_enter">Reorder steps</string>
+    <string name="pipeline_reorder_done">Done reordering</string>
+
+    <!-- Selection mode -->
+    <string name="pipeline_select_enter">Select multiple</string>
+    <string name="pipeline_select_done">Done selecting</string>
+    <string name="pipeline_select_delete_cd">Delete selected</string>
+    <string name="pipeline_select_all_cd">Select all</string>
+    <string name="pipeline_select_clear_cd">Deselect all</string>
+    <string name="pipeline_title_selecting">%1$d selected</string>
+    <string name="pipeline_select_delete_confirm_title">Delete selected rules?</string>
+    <string name="pipeline_select_delete_confirm_body">%1$d rule(s) will be removed from your pipeline. This can\'t be undone.</string>
+
+    <!-- Inbox -->
+    <string name="inbox_scan_now_cd">Scan now</string>
+    <string name="inbox_scanning_started">Scanning watched folders…</string>
+    <string name="inbox_scanning_disabled">Add a watched folder in Settings first</string>
+    <string name="inbox_empty_title">Nothing waiting</string>
+    <string name="inbox_empty_subtitle">When new .cbz files appear in your watched folders, they\'ll show up here for review.</string>
+    <string name="inbox_empty_processed_title">No processed files</string>
+    <string name="inbox_empty_processed_subtitle">Files you approve from the Pending list show up here once they\'ve gone through the pipeline.</string>
+    <string name="inbox_empty_ignored_title">No ignored files</string>
+    <string name="inbox_empty_ignored_subtitle">Files you tap Ignore on land here. Reprocess any to send them back to the pending queue.</string>
+    <string name="inbox_pending_count">%1$d waiting for review</string>
+    <string name="inbox_ignore_all">Ignore all</string>
+    <string name="inbox_process_all">Process all</string>
+    <string name="inbox_ignore">Ignore</string>
+    <string name="inbox_process">Process</string>
+    <string name="inbox_reprocess">Reprocess</string>
+    <string name="inbox_forget">Forget</string>
+    <string name="inbox_filter_pending">Pending</string>
+    <string name="inbox_filter_processed">Processed</string>
+    <string name="inbox_filter_ignored">Ignored</string>
+    <string name="inbox_rename_to">Will be renamed to</string>
+    <string name="inbox_edit_name_cd">Edit pipeline input</string>
+    <string name="inbox_edit_title">Pipeline input</string>
+    <string name="inbox_edit_body">These are the values your pipeline reads as input — same shape as the archive\'s ComicInfo.xml. Editing here only changes what the pipeline sees on this run; it doesn\'t directly write back to the file. Removing a field also strips its ComicInfo element when this file is processed.</string>
+    <string name="inbox_edit_save">Save</string>
+    <string name="inbox_edit_cancel">Cancel</string>
+    <string name="inbox_edit_reset">Reset all</string>
+    <string name="inbox_edit_field_add">Add field</string>
+    <string name="inbox_edit_field_add_confirm">Add</string>
+    <string name="inbox_edit_field_add_custom">Custom variable…</string>
+    <string name="inbox_edit_field_new_key_label">Variable name</string>
+    <string name="inbox_edit_field_new_key_placeholder">e.g. translator</string>
+    <string name="inbox_edit_field_custom_marker">Custom variable</string>
+    <string name="inbox_edit_field_remove_cd">Remove field</string>
+    <string name="inbox_edit_field_restore">Restore</string>
+    <string name="inbox_edit_field_in_file">Currently in the file</string>
+    <string name="inbox_edit_removed_section">Will be removed from the file</string>
+    <string name="inbox_edit_removed_caption">The element will be stripped from ComicInfo when this file is processed.</string>
+    <string name="inbox_edited_label">Edited</string>
+    <string name="inbox_setup_title">Finish setting up Mangako</string>
+    <string name="inbox_setup_body">Connect your LANraragi server and pick at least one folder to watch before Mangako can pick up new downloads.</string>
+    <string name="inbox_setup_step_server">Connect your LANraragi server</string>
+    <string name="inbox_setup_step_folder">Pick a folder to watch</string>
+    <string name="inbox_setup_step_rules">Add at least one renaming rule</string>
+    <string name="inbox_setup_step_done">Done</string>
+
+    <!-- History -->
+    <string name="history_title">History</string>
+    <string name="history_clear_cd">Clear history</string>
+    <string name="history_empty">Nothing here yet — Mangako will record every file it processes.</string>
+    <string name="history_detail_title">What Mangako did</string>
+    <string name="history_detail_back_cd">Back</string>
+    <string name="history_label_original">Started with</string>
+    <string name="history_label_final">Renamed to</string>
+    <string name="history_ran_in">%1$s · took %2$d ms</string>
+    <string name="history_section_comicinfo">ComicInfo after pipeline</string>
+    <string name="history_section_rules">Step by step</string>
+    <string name="history_section_upload">Upload</string>
+    <string name="history_loading">Loading…</string>
+    <string name="history_step_header">%1$d. %2$s</string>
+    <string name="history_step_duration_ms">%1$d ms</string>
+    <string name="history_delete_cd">Delete entry</string>
+    <string name="fullscreen_image_close_cd">Close preview</string>
+    <string name="history_upload_success">Uploaded successfully (HTTP %1$d)</string>
+    <string name="history_upload_fail">Upload failed</string>
+    <string name="history_upload_fail_code">Upload failed (HTTP %1$d)</string>
+    <string name="history_source_deleted">The original file was deleted from your device.</string>
+    <string name="history_source_kept">The original file is still on your device.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_server">LANraragi Server</string>
+    <string name="settings_base_url">Base URL (https://lrr.example.com)</string>
+    <string name="settings_insecure_warning">⚠ This is an http:// URL on a public host. Your API key will travel in the clear. Prefer https:// or a LAN/VPN address.</string>
+    <string name="settings_api_key">API key</string>
+    <string name="settings_api_key_hint">Stored encrypted in the Android Keystore.</string>
+    <string name="settings_test_connection">Test connection</string>
+    <string name="settings_section_folders">Watched folders</string>
+    <string name="settings_folders_intro">Mangako scans these folders every 15 minutes for new .cbz files. Add as many as you like.</string>
+    <string name="settings_folders_empty">No folders yet — add the download directory of Mihon, Tachiyomi, etc.</string>
+    <string name="settings_add_folder">Add folder</string>
+    <string name="settings_scan_now">Scan now</string>
+    <string name="settings_remove_folder_cd">Remove</string>
+    <string name="settings_section_watcher">Watcher</string>
+    <string name="settings_watcher_enabled">Watcher enabled</string>
+    <string name="settings_watcher_enabled_sub">Background scan for new files</string>
+    <string name="settings_mode_label">Processing mode</string>
+    <string name="settings_mode_approval">Ask first</string>
+    <string name="settings_mode_auto">Auto-process</string>
+    <string name="settings_mode_approval_desc">Detected files wait in the Inbox until you tap Process or Ignore.</string>
+    <string name="settings_mode_auto_desc">Detected files run through the pipeline and upload immediately.</string>
+    <string name="settings_notify_enabled">Notify on detection</string>
+    <string name="settings_notify_enabled_sub">Post a notification with Process / Ignore actions</string>
+    <string name="settings_delete_enabled">Delete source on success</string>
+    <string name="settings_delete_enabled_sub">Remove the original .cbz after a successful upload</string>
+    <string name="settings_debounce_label">Debounce window: %1$d s</string>
+    <string name="settings_debounce_desc">File size must stay stable for this long before we start processing. Prevents grabbing half-written downloads.</string>
+    <string name="settings_debounce_value">%1$ds</string>
+    <string name="settings_test_ok_prefix">✓</string>
+    <string name="settings_test_fail_prefix">✗</string>
+    <string name="settings_test_url_empty">Server URL is empty</string>
+    <string name="settings_test_http">HTTP %1$d</string>
+
+    <!-- Real-time watching -->
+    <string name="settings_section_realtime">Real-time watching</string>
+    <string name="settings_realtime_intro">When granted, Mangako notices new .cbz files within a second of them landing in your watched folders — same approach as Nextcloud\'s auto-upload. Without it the watcher relies on the system\'s 15-minute periodic schedule plus a refresh whenever you open the app.</string>
+    <string name="settings_realtime_status_on">All files access is granted</string>
+    <string name="settings_realtime_status_off">Periodic only — All files access not granted</string>
+    <string name="settings_realtime_action_grant">Grant access</string>
+    <string name="settings_realtime_action_manage">Manage</string>
+
+    <!-- Notifications -->
+    <string name="notif_channel_detected">New CBZ detected</string>
+    <string name="notif_channel_detected_desc">Ask before processing newly-downloaded files</string>
+    <string name="notif_channel_progress">Processing progress</string>
+    <string name="notif_channel_inbox">Inbox reminder</string>
+    <string name="notif_channel_inbox_desc">Persistent summary when files are waiting for approval</string>
+    <string name="notif_detected_title">New CBZ: %1$s</string>
+    <string name="notif_detected_body">%1$s\nfrom %2$s</string>
+    <string name="notif_detected_action_process">Process</string>
+    <string name="notif_detected_action_ignore">Ignore</string>
+    <string name="notif_inbox_summary_one">1 file awaiting review</string>
+    <string name="notif_inbox_summary_other">%1$d files awaiting review</string>
+    <string name="notif_inbox_summary_body">Open Mangako to approve or ignore</string>
+
+    <!-- Imports / messages -->
+    <string name="msg_imported">Imported pipeline \"%1$s\" (%2$d rules)</string>
+    <string name="msg_import_failed">Import failed: %1$s</string>
+    <string name="msg_defaults_loaded">Loaded LANraragi Standard pipeline</string>
+    <string name="msg_exported_generic">Exported</string>
+</resources>

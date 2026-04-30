@@ -180,12 +180,6 @@ class InboxViewModel @Inject constructor(
         Notifications.cancelDetected(context, file.id)
     }
 
-    /** Reset a Processed / Ignored row back to PENDING so the user can run
-     *  it through the pipeline again from the standard Inbox flow. */
-    fun reprocess(file: PendingFile) = viewModelScope.launch {
-        pendingRepo.reprocess(file.id)
-    }
-
     /** Hard-delete a row — useful from the Processed view when the user
      *  doesn't ever want to see this file again. The on-disk .cbz is left
      *  alone; only Mangako's tracking row goes away. */

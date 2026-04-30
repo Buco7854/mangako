@@ -8,6 +8,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!--
+        Lets Settings → Background reliability prompt the user to whitelist
+        Mangako from Doze / App Standby. Without this, periodic scans and
+        upload retries can be deferred for hours when the device is idle,
+        which is the difference between getting an Inbox notification at
+        download-time vs. the next time the user opens the app.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- For legacy storage pre-SAF fallback; SAF Uri is the preferred path -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"

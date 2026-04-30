@@ -245,6 +245,10 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             Section(stringResource(R.string.settings_section_realtime)) {
                 RealtimeWatchingControl()
             }
+
+            Section(stringResource(R.string.settings_section_battery)) {
+                BatteryOptimisationControl()
+            }
         }
     }
 }
@@ -315,6 +319,89 @@ private fun rememberAllFilesAccessState(): Boolean {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     return granted
+}
+
+/**
+ * Mirrors RealtimeWatchingControl for the battery-optimisation whitelist.
+ * The status flips when the user comes back from the system dialog, so we
+ * re-read on ON_RESUME the same way.
+ */
+@Composable
+private fun BatteryOptimisationControl() {
+    val ctx = LocalContext.current
+    val ignored = rememberBatteryOptimisationState()
+    Text(
+        stringResource(R.string.settings_battery_intro),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(12.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        val statusText = if (ignored) {
+            stringResource(R.string.settings_battery_status_on)
+        } else {
+            stringResource(R.string.settings_battery_status_off)
+        }
+        Text(
+            statusText,
+            style = MaterialTheme.typography.titleSmall,
+            color = if (ignored) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedButton(onClick = { openBatteryOptimisationSettings(ctx) }) {
+            Text(
+                stringResource(
+                    if (ignored) R.string.settings_battery_action_manage
+                    else R.string.settings_battery_action_grant,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun rememberBatteryOptimisationState(): Boolean {
+    val ctx = LocalContext.current
+    var ignored by remember { mutableStateOf(isIgnoringBatteryOptimisations(ctx)) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                ignored = isIgnoringBatteryOptimisations(ctx)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    return ignored
+}
+
+private fun isIgnoringBatteryOptimisations(ctx: android.content.Context): Boolean {
+    val pm = ctx.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+        ?: return false
+    return pm.isIgnoringBatteryOptimizations(ctx.packageName)
+}
+
+private fun openBatteryOptimisationSettings(ctx: android.content.Context) {
+    // ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS pops the system dialog
+    // directly when we're not yet whitelisted; once whitelisted, the same
+    // intent is a no-op, so for "Manage" we fall back to the full list page
+    // so the user can flip back to optimised if they want.
+    val ignored = isIgnoringBatteryOptimisations(ctx)
+    val intent = if (ignored) {
+        android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+    } else {
+        android.content.Intent(
+            android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            android.net.Uri.parse("package:${ctx.packageName}"),
+        )
+    }.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    val fallback = android.content.Intent(
+        android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS,
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { ctx.startActivity(intent) }
+        .onFailure { runCatching { ctx.startActivity(fallback) } }
 }
 
 private fun openAllFilesAccessSettings(ctx: android.content.Context) {

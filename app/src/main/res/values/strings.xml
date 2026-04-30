@@ -158,13 +158,12 @@
     <string name="inbox_empty_processed_title">No processed files</string>
     <string name="inbox_empty_processed_subtitle">Files you approve from the Pending list show up here once they\'ve gone through the pipeline.</string>
     <string name="inbox_empty_ignored_title">No ignored files</string>
-    <string name="inbox_empty_ignored_subtitle">Files you tap Ignore on land here. Reprocess any to send them back to the pending queue.</string>
+    <string name="inbox_empty_ignored_subtitle">Files you tap Ignore on land here. Tap Forget to remove them from the list.</string>
     <string name="inbox_pending_count">%1$d waiting for review</string>
     <string name="inbox_ignore_all">Ignore all</string>
     <string name="inbox_process_all">Process all</string>
     <string name="inbox_ignore">Ignore</string>
     <string name="inbox_process">Process</string>
-    <string name="inbox_reprocess">Reprocess</string>
     <string name="inbox_forget">Forget</string>
     <string name="inbox_filter_pending">Pending</string>
     <string name="inbox_filter_processed">Processed</string>
@@ -259,6 +258,14 @@
     <string name="settings_realtime_status_off">Periodic only — All files access not granted</string>
     <string name="settings_realtime_action_grant">Grant access</string>
     <string name="settings_realtime_action_manage">Manage</string>
+
+    <!-- Background reliability -->
+    <string name="settings_section_battery">Background reliability</string>
+    <string name="settings_battery_intro">Android Doze and aggressive OEM battery savers (Samsung, Xiaomi, OnePlus, etc.) can defer scans and notifications for hours when the screen is off. Whitelisting Mangako lets the 15-minute scan and upload retries fire on time. On Samsung / Xiaomi / Huawei, also visit the system battery settings for this app and disable any "deep sleep" or "auto-optimise" toggle.</string>
+    <string name="settings_battery_status_on">Battery optimisation is disabled for Mangako</string>
+    <string name="settings_battery_status_off">Battery optimisation is active — background work may be delayed</string>
+    <string name="settings_battery_action_grant">Disable optimisation</string>
+    <string name="settings_battery_action_manage">Manage</string>
 
     <!-- Notifications -->
     <string name="notif_channel_detected">New CBZ detected</string>

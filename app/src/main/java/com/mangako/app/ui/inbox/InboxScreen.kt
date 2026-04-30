@@ -148,7 +148,7 @@ fun InboxScreen(
 
             // The Process-all / Ignore-all bulk buttons only make sense in the
             // Pending view; in the Processed/Ignored views the per-card
-            // 'Reprocess' / 'Forget' actions cover what users actually want.
+            // 'Forget' action covers what users actually want.
             if (state.filter == InboxViewModel.Filter.PENDING) {
                 BulkBar(
                     count = state.items.size,
@@ -169,7 +169,6 @@ fun InboxScreen(
                         thumbnails = viewModel.thumbnailService,
                         onApprove = { viewModel.approve(item.file) },
                         onReject = { viewModel.reject(item.file) },
-                        onReprocess = { viewModel.reprocess(item.file) },
                         onForget = { viewModel.forget(item.file) },
                         onSaveOverrides = { overrides, removals ->
                             viewModel.saveOverrides(item.file, overrides, removals)
@@ -349,14 +348,13 @@ private fun InboxCard(
     thumbnails: ThumbnailService,
     onApprove: () -> Unit,
     onReject: () -> Unit,
-    onReprocess: () -> Unit,
     onForget: () -> Unit,
     onSaveOverrides: (Map<String, String>, Set<String>) -> Unit,
 ) {
     when (filter) {
         InboxViewModel.Filter.PENDING -> PendingCard(item, thumbnails, onApprove, onReject, onSaveOverrides)
         InboxViewModel.Filter.PROCESSED -> ProcessedCard(item, thumbnails, onForget)
-        InboxViewModel.Filter.IGNORED -> IgnoredCard(item, thumbnails, onReprocess, onForget)
+        InboxViewModel.Filter.IGNORED -> IgnoredCard(item, thumbnails, onForget)
     }
 }
 
@@ -924,13 +922,12 @@ private fun ProcessedCard(
     }
 }
 
-/** Ignored items keep both Reprocess + Forget — the on-disk file still
- *  exists (we don't touch a file on Ignore), so Reprocess is a real action. */
+/** Ignored items get a Forget action only — the on-disk file is left
+ *  alone; Forget just clears Mangako's tracking row. */
 @Composable
 private fun IgnoredCard(
     item: InboxViewModel.InboxItem,
     thumbnails: ThumbnailService,
-    onReprocess: () -> Unit,
     onForget: () -> Unit,
 ) {
     val file = item.file
@@ -962,17 +959,10 @@ private fun IgnoredCard(
                 }
             }
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onForget, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Outlined.Delete, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.inbox_forget))
-                }
-                Button(onClick = onReprocess, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Outlined.Refresh, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.inbox_reprocess))
-                }
+            OutlinedButton(onClick = onForget, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.Delete, null)
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.inbox_forget))
             }
         }
     }

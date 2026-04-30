@@ -200,14 +200,6 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
         dao.setMetadataEditsJson(id, overridesJson, removalsJson)
     }
 
-    /**
-     * Resets a previously-processed or ignored row back to PENDING so the
-     * user can run it through the pipeline again. The original file URI
-     * is kept; if the underlying SAF document no longer resolves (file was
-     * deleted or moved), the next process attempt will fail loudly via the
-     * usual ProcessCbzWorker error path rather than silently no-op.
-     */
-    suspend fun reprocess(id: String) = dao.setStatus(id, PendingStatus.PENDING.name)
     suspend fun delete(id: String) = dao.delete(id)
 
     suspend fun pruneOlderThan(cutoff: Long) = dao.pruneOld(cutoff)

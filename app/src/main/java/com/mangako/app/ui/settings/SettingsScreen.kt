@@ -243,7 +243,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             }
 
             Section(stringResource(R.string.settings_section_realtime)) {
-                RealtimeWatchingControl()
+                RealtimeWatchingControl(watcherEnabled = settings.watcherEnabled)
             }
 
             Section(stringResource(R.string.settings_section_battery)) {
@@ -266,9 +266,18 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
  * closes to refresh our state.
  */
 @Composable
-private fun RealtimeWatchingControl() {
+private fun RealtimeWatchingControl(watcherEnabled: Boolean) {
     val ctx = LocalContext.current
-    val granted = rememberAllFilesAccessState()
+    val granted = rememberAllFilesAccessState(
+        onPermissionFlipped = {
+            // Kick the foreground service so it picks up the new permission
+            // state. reconcile is idempotent — if the user toggled the
+            // watcher off in the same session, this stops the service
+            // instead of starting it.
+            com.mangako.app.work.observer.RealtimeWatchService
+                .reconcile(ctx, watcherEnabled = watcherEnabled)
+        },
+    )
     Text(
         stringResource(R.string.settings_realtime_intro),
         style = MaterialTheme.typography.bodySmall,
@@ -306,13 +315,17 @@ private fun RealtimeWatchingControl() {
  * changed. Lifecycle observer is the cleanest hook for that.
  */
 @Composable
-private fun rememberAllFilesAccessState(): Boolean {
+private fun rememberAllFilesAccessState(onPermissionFlipped: () -> Unit = {}): Boolean {
     var granted by remember { mutableStateOf(com.mangako.app.work.observer.canUseFileObserver()) }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                granted = com.mangako.app.work.observer.canUseFileObserver()
+                val now = com.mangako.app.work.observer.canUseFileObserver()
+                if (now != granted) {
+                    granted = now
+                    onPermissionFlipped()
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

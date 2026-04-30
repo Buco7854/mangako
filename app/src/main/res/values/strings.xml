@@ -273,6 +273,10 @@
     <string name="notif_channel_progress">Processing progress</string>
     <string name="notif_channel_inbox">Inbox reminder</string>
     <string name="notif_channel_inbox_desc">Persistent summary when files are waiting for approval</string>
+    <string name="notif_channel_watcher">Real-time watcher</string>
+    <string name="notif_channel_watcher_desc">Keeps Mangako awake so it can detect new CBZ files the instant they land in your watched folders. Mute this channel to hide the icon — the watcher keeps running.</string>
+    <string name="notif_watcher_title">Watching for new chapters</string>
+    <string name="notif_watcher_body">Real-time detection is active</string>
     <string name="notif_detected_title">New CBZ: %1$s</string>
     <string name="notif_detected_body">%1$s\nfrom %2$s</string>
     <string name="notif_detected_action_process">Process</string>

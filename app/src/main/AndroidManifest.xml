@@ -86,5 +86,17 @@
             android:name=".work.notify.PendingActionReceiver"
             android:enabled="true"
             android:exported="false" />
+
+        <!--
+            Foreground service that owns the inotify FileObservers. Without
+            this, the observers die when Android kills the app process and
+            real-time detection silently stops. The dataSync foregroundServiceType
+            matches what cloud-sync apps (Nextcloud, Syncthing) use for the
+            same job.
+        -->
+        <service
+            android:name=".work.observer.RealtimeWatchService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

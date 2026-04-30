@@ -24,6 +24,7 @@ object Notifications {
     const val CHANNEL_DETECTED = "mangako_detected"
     const val CHANNEL_PROGRESS = "mangako_progress"
     const val CHANNEL_INBOX = "mangako_inbox"
+    const val CHANNEL_WATCHER = "mangako_watcher"
 
     const val ACTION_APPROVE = "com.mangako.app.ACTION_APPROVE"
     const val ACTION_REJECT = "com.mangako.app.ACTION_REJECT"
@@ -31,6 +32,10 @@ object Notifications {
 
     // Fixed id so re-posting updates-in-place rather than stacking.
     private const val INBOX_SUMMARY_ID = 0xBA5E
+
+    // Foreground-service notification id; must be stable so each service
+    // start re-uses the same notification rather than spawning a new one.
+    const val WATCHER_NOTIFICATION_ID = 0xCBFA
 
     /**
      * True on API <33 (permission implicit) OR when POST_NOTIFICATIONS has been
@@ -62,7 +67,39 @@ object Notifications {
                 context.getString(R.string.notif_channel_inbox),
                 NotificationManager.IMPORTANCE_LOW,
             ).apply { description = context.getString(R.string.notif_channel_inbox_desc) },
+            NotificationChannel(
+                CHANNEL_WATCHER,
+                context.getString(R.string.notif_channel_watcher),
+                NotificationManager.IMPORTANCE_MIN,
+            ).apply { description = context.getString(R.string.notif_channel_watcher_desc) },
         ).forEach(nm::createNotificationChannel)
+    }
+
+    /**
+     * Builds the persistent low-priority notification shown while
+     * [com.mangako.app.work.observer.RealtimeWatchService] is alive. Tapping
+     * it opens the app; long-press lets the user mute the channel from the
+     * system UI.
+     */
+    fun buildWatcherNotification(context: Context): android.app.Notification {
+        ensureChannels(context)
+        val openApp = PendingIntent.getActivity(
+            context, 0,
+            Intent(context, MainActivity::class.java)
+                .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        return NotificationCompat.Builder(context, CHANNEL_WATCHER)
+            .setSmallIcon(R.drawable.ic_mangako_stat)
+            .setContentTitle(context.getString(R.string.notif_watcher_title))
+            .setContentText(context.getString(R.string.notif_watcher_body))
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setShowWhen(false)
+            .setContentIntent(openApp)
+            .build()
     }
 
     // Lint can't see through canPost(); we keep the runtime check + try/catch

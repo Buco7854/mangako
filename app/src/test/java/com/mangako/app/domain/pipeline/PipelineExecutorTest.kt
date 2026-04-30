@@ -279,12 +279,16 @@ class PipelineExecutorTest {
         // Pipeline now writes back the cleaned values for every relevant
         // ComicInfo field, not just Title — so LANraragi (and any
         // ComicInfo metadata plugin) sees the post-pipeline data.
+        // Penciller carries %writer% so LANraragi emits artist: tags;
+        // LanguageISO carries the full name (verbatim — used as the
+        // value of the language: tag).
         assertEquals("My Series Ch 39", out.comicInfoUpdates["Title"])
         assertEquals("My Series", out.comicInfoUpdates["Series"])
         assertEquals("Author", out.comicInfoUpdates["Writer"])
+        assertEquals("Author", out.comicInfoUpdates["Penciller"])
         assertEquals("39", out.comicInfoUpdates["Number"])
         assertEquals("Manhwa; Action", out.comicInfoUpdates["Genre"])
-        assertEquals("en", out.comicInfoUpdates["LanguageISO"])
+        assertEquals("English", out.comicInfoUpdates["LanguageISO"])
     }
 
     @Test fun `default template preserves an event tag carried in Title`() {

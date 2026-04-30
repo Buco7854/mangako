@@ -405,31 +405,32 @@ object DefaultTemplate {
             // Phase 8: Sync ComicInfo
             // ─────────────────────────────────────────────
 
-            // 16. Compute %language_iso% from %language%. ComicInfo's
-            //     <LanguageISO> field is a 2-letter ISO 639-1 code, not
-            //     the human-readable name we stored in %language%, so we
-            //     map them here before the write step. Match is
-            //     case-insensitive so "english" / "English" / "ENGLISH"
-            //     all resolve correctly.
-            add(languageToIso("English", "en"))
-            add(languageToIso("Japanese", "ja"))
-            add(languageToIso("Chinese", "zh"))
-            add(languageToIso("Korean", "ko"))
-            add(languageToIso("French", "fr"))
-            add(languageToIso("Spanish", "es"))
-            add(languageToIso("German", "de"))
-            add(languageToIso("Italian", "it"))
-            add(languageToIso("Portuguese", "pt"))
-            add(languageToIso("Russian", "ru"))
-            add(languageToIso("Thai", "th"))
-            add(languageToIso("Vietnamese", "vi"))
-
-            // 17. Write the cleaned pipeline values back into
-            //     ComicInfo.xml so LANraragi's auto-extraction (and
-            //     any ComicInfo metadata plugin) reads the cleaned
-            //     fields, not Mihon's stale ones. The merge in
-            //     CbzProcessor preserves any ComicInfo field we don't
-            //     mention here, so this is purely additive.
+            // 16. Write the cleaned pipeline values back into
+            //     ComicInfo.xml so LANraragi's plugins (ComicInfo,
+            //     Filename) and any other ComicInfo-aware tool see the
+            //     post-pipeline data, not Mihon's stale fields. The
+            //     merge in CbzProcessor preserves any ComicInfo field
+            //     we don't mention here, so this is purely additive.
+            //
+            //     Notes on LANraragi plugin behaviour (verified against
+            //     LANraragi/Plugin/Metadata/ComicInfo.pm):
+            //       <Writer>      → emits  group:%writer%
+            //       <Penciller>   → emits  artist:%writer%
+            //       <LanguageISO> → emits  language:%language% (used
+            //                       verbatim — full name like "English"
+            //                       gives a friendlier tag than "en")
+            //       <Title>       → becomes the archive title
+            //       <Series>      → emits  series:%series%
+            //       <Genre>       → emits  unprefixed tags (comma-split)
+            //       <Number>, <Summary> → preserved for other tools but
+            //                       not read by LANraragi's plugin
+            //
+            //     For Mihon-sourced doujinshi the same person is the
+            //     author and artist, so we write to both <Writer> and
+            //     <Penciller> — that way LANraragi tags include both
+            //     `group:%writer%` and `artist:%writer%` and any
+            //     ComicInfo-XSD-strict reader still sees a populated
+            //     <Writer>.
             add(
                 Rule.WriteComicInfo(
                     id = id(),
@@ -438,36 +439,15 @@ object DefaultTemplate {
                         "Title" to "%title%",
                         "Series" to "%series%",
                         "Writer" to "%writer%",
+                        "Penciller" to "%writer%",
                         "Number" to "%number%",
                         "Genre" to "%genre%",
-                        "LanguageISO" to "%language_iso%",
+                        "LanguageISO" to "%language%",
                         "Summary" to "%summary%",
                     ),
                 ),
             )
         },
-    )
-
-    /** %language% (e.g. "English") → %language_iso% (e.g. "en"). One
-     *  ConditionalFormat per language so users can spot and remove
-     *  individual mappings the same way they can with the emoji
-     *  fallbacks. Match is case-insensitive (Condition.ignoreCase
-     *  defaults to true), so a lowercased %language% still resolves. */
-    private fun languageToIso(lang: String, iso: String): Rule = Rule.ConditionalFormat(
-        id = id(),
-        label = "$lang → $iso",
-        condition = Condition(
-            variable = "language",
-            op = Condition.Op.EQUALS,
-            value = lang,
-        ),
-        thenRules = listOf(
-            Rule.SetVariable(
-                id = id(),
-                target = "language_iso",
-                value = iso,
-            ),
-        ),
     )
 
     /** Single emoji-flag → language ConditionalFormat used by the

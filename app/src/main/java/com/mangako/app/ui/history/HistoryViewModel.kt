@@ -6,25 +6,10 @@ import com.mangako.app.data.history.HistoryRecord
 import com.mangako.app.data.history.HistoryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-@HiltViewModel
-class HistoryListViewModel @Inject constructor(
-    private val repo: HistoryRepository,
-) : ViewModel() {
-
-    val items: StateFlow<List<HistoryRecord>> = repo.observe()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    fun clear() = viewModelScope.launch { repo.clear() }
-
-    fun delete(id: String) = viewModelScope.launch { repo.delete(id) }
-}
 
 @HiltViewModel
 class HistoryDetailViewModel @Inject constructor(

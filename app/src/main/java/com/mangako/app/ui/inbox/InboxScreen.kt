@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +24,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -57,6 +61,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -64,6 +69,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -81,6 +87,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.mangako.app.R
+import com.mangako.app.data.history.HistoryRecord
+import com.mangako.app.ui.common.FullscreenImageDialog
 import com.mangako.app.work.DirectoryScanWorker
 import java.io.File
 import kotlinx.coroutines.launch
@@ -92,6 +100,7 @@ import java.util.Date
 fun InboxScreen(
     onOpenSettings: () -> Unit = {},
     onOpenPipeline: () -> Unit = {},
+    onOpenHistory: (String) -> Unit = {},
     viewModel: InboxViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -100,6 +109,27 @@ fun InboxScreen(
     val scope = rememberCoroutineScope()
     val scanningMsg = stringResource(R.string.inbox_scanning_started)
     val scanDisabledMsg = stringResource(R.string.inbox_scanning_disabled)
+
+    val filters = remember { InboxViewModel.Filter.values().toList() }
+    val pagerState = rememberPagerState(initialPage = state.filter.ordinal) { filters.size }
+
+    // Filter chip → pager: when the user taps a chip, animate-scroll to
+    // that page. Only triggers when the chip selection precedes the swipe
+    // (otherwise the launchSwipe→setFilter→animateScroll cycle would loop).
+    LaunchedEffect(state.filter) {
+        if (pagerState.currentPage != state.filter.ordinal) {
+            pagerState.animateScrollToPage(state.filter.ordinal)
+        }
+    }
+    // Pager → filter chip: when the swipe settles on a new page, sync the
+    // chip. snapshotFlow + settledPage avoids fighting the chip → pager
+    // path during an in-flight animation.
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            val newFilter = filters[page]
+            if (newFilter != state.filter) viewModel.setFilter(newFilter)
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -141,41 +171,127 @@ fun InboxScreen(
                 onSelect = viewModel::setFilter,
             )
 
-            if (state.items.isEmpty()) {
-                EmptyInbox(filter = state.filter, modifier = Modifier.weight(1f))
-                return@Scaffold
-            }
-
-            // The Process-all / Ignore-all bulk buttons only make sense in the
-            // Pending view; in the Processed/Ignored views the per-card
-            // 'Forget' action covers what users actually want.
-            if (state.filter == InboxViewModel.Filter.PENDING) {
+            // The Process-all / Ignore-all bulk buttons only make sense in
+            // the Pending view; in the Processed / Ignored views the
+            // per-card actions cover what users actually want. Hidden by
+            // a height-zero spacer rather than removed so the pager doesn't
+            // shift y-position when the user swipes off Pending.
+            if (state.filter == InboxViewModel.Filter.PENDING && state.pendingItems.isNotEmpty()) {
                 BulkBar(
-                    count = state.items.size,
+                    count = state.pendingItems.size,
                     onApproveAll = viewModel::approveAll,
                     onRejectAll = viewModel::rejectAll,
                 )
             }
 
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                items(state.items, key = { it.file.id }) { item ->
-                    InboxCard(
-                        item = item,
-                        filter = state.filter,
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) { page ->
+                when (filters[page]) {
+                    InboxViewModel.Filter.PENDING -> PendingPage(
+                        items = state.pendingItems,
                         thumbnails = viewModel.thumbnailService,
-                        onApprove = { viewModel.approve(item.file) },
-                        onReject = { viewModel.reject(item.file) },
-                        onForget = { viewModel.forget(item.file) },
-                        onSaveOverrides = { overrides, removals ->
-                            viewModel.saveOverrides(item.file, overrides, removals)
+                        onApprove = { viewModel.approve(it) },
+                        onReject = { viewModel.reject(it) },
+                        onSaveOverrides = { file, overrides, removals ->
+                            viewModel.saveOverrides(file, overrides, removals)
                         },
+                    )
+                    InboxViewModel.Filter.PROCESSED -> ProcessedPage(
+                        records = state.processedRecords,
+                        onOpen = onOpenHistory,
+                        onForget = viewModel::forgetProcessed,
+                    )
+                    InboxViewModel.Filter.IGNORED -> IgnoredPage(
+                        items = state.ignoredItems,
+                        thumbnails = viewModel.thumbnailService,
+                        onForget = { viewModel.forget(it) },
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PendingPage(
+    items: List<InboxViewModel.InboxItem>,
+    thumbnails: ThumbnailService,
+    onApprove: (com.mangako.app.data.pending.PendingFile) -> Unit,
+    onReject: (com.mangako.app.data.pending.PendingFile) -> Unit,
+    onSaveOverrides: (com.mangako.app.data.pending.PendingFile, Map<String, String>, Set<String>) -> Unit,
+) {
+    if (items.isEmpty()) {
+        EmptyInbox(InboxViewModel.Filter.PENDING)
+        return
+    }
+    LazyColumn(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        items(items, key = { it.file.id }) { item ->
+            PendingCard(
+                item = item,
+                thumbnails = thumbnails,
+                onApprove = { onApprove(item.file) },
+                onReject = { onReject(item.file) },
+                onSaveOverrides = { ov, rm -> onSaveOverrides(item.file, ov, rm) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProcessedPage(
+    records: List<HistoryRecord>,
+    onOpen: (String) -> Unit,
+    onForget: (String) -> Unit,
+) {
+    if (records.isEmpty()) {
+        EmptyInbox(InboxViewModel.Filter.PROCESSED)
+        return
+    }
+    var preview by remember { mutableStateOf<File?>(null) }
+    LazyColumn(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        items(records, key = { it.id }) { rec ->
+            ProcessedHistoryCard(
+                record = rec,
+                onClick = { onOpen(rec.id) },
+                onPreviewCover = { file -> preview = file },
+                onForget = { onForget(rec.id) },
+            )
+        }
+    }
+    FullscreenImageDialog(file = preview, onDismiss = { preview = null })
+}
+
+@Composable
+private fun IgnoredPage(
+    items: List<InboxViewModel.InboxItem>,
+    thumbnails: ThumbnailService,
+    onForget: (com.mangako.app.data.pending.PendingFile) -> Unit,
+) {
+    if (items.isEmpty()) {
+        EmptyInbox(InboxViewModel.Filter.IGNORED)
+        return
+    }
+    LazyColumn(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        items(items, key = { it.file.id }) { item ->
+            IgnoredCard(
+                item = item,
+                thumbnails = thumbnails,
+                onForget = { onForget(item.file) },
+            )
         }
     }
 }
@@ -338,23 +454,6 @@ private fun BulkBar(count: Int, onApproveAll: () -> Unit, onRejectAll: () -> Uni
         OutlinedButton(onClick = onRejectAll) { Text(stringResource(R.string.inbox_ignore_all)) }
         Spacer(Modifier.width(8.dp))
         FilledTonalButton(onClick = onApproveAll) { Text(stringResource(R.string.inbox_process_all)) }
-    }
-}
-
-@Composable
-private fun InboxCard(
-    item: InboxViewModel.InboxItem,
-    filter: InboxViewModel.Filter,
-    thumbnails: ThumbnailService,
-    onApprove: () -> Unit,
-    onReject: () -> Unit,
-    onForget: () -> Unit,
-    onSaveOverrides: (Map<String, String>, Set<String>) -> Unit,
-) {
-    when (filter) {
-        InboxViewModel.Filter.PENDING -> PendingCard(item, thumbnails, onApprove, onReject, onSaveOverrides)
-        InboxViewModel.Filter.PROCESSED -> ProcessedCard(item, thumbnails, onForget)
-        InboxViewModel.Filter.IGNORED -> IgnoredCard(item, thumbnails, onForget)
     }
 }
 
@@ -862,63 +961,130 @@ private fun displayValue(key: String, raw: String): String =
 
 
 /**
- * Minimal view for already-processed files. Two stacked lines:
+ * Processed-tab card backed by an audit-trail [HistoryRecord]. The whole
+ * card is clickable — tapping opens the History detail screen with the
+ * full per-step breakdown that used to live behind the (now-removed)
+ * History tab. The cover thumbnail is its own click target so a tap there
+ * opens the full-screen preview without navigating away.
  *
- *   - the human title the pipeline actually produced (read off the
- *     History audit trail — same string History detail surfaces in
- *     its Breakdown card).
- *   - the original filename Mangako started with — Mihon's download
- *     name in monospace, so the user can match the row back to the
- *     source they downloaded.
- *
- * The renamed upload filename used to be on line two, but it largely
- * mirrored the pipeline title (the build template embeds %title% into
- * it) and read like a duplicate of the title with extra brackets — so
- * we surface it in History detail instead, where the per-step trail
- * actually explains how that name was assembled.
+ * Status is shown as a leading colored stripe (Mihon-style) instead of
+ * the old little dot — easier to scan from a distance and uses the
+ * Material colour roles instead of hard-coded hex.
  */
 @Composable
-private fun ProcessedCard(
-    item: InboxViewModel.InboxItem,
-    thumbnails: ThumbnailService,
+private fun ProcessedHistoryCard(
+    record: HistoryRecord,
+    onClick: () -> Unit,
+    onPreviewCover: (File) -> Unit,
     onForget: () -> Unit,
 ) {
-    val file = item.file
+    val cleanTitle = record.cleanedTitle()
+        ?.takeIf { it.isNotBlank() }
+        ?: record.finalName.removeSuffix(".cbz")
+    val stripeColor = if (record.success) MaterialTheme.colorScheme.primary
+    else MaterialTheme.colorScheme.error
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-        Row(
-            modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CoverThumbnail(file.uri, file.sizeBytes, thumbnails)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    item.displayTitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    file.name,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            IconButton(onClick = onForget) {
-                Icon(
-                    Icons.Outlined.Delete,
-                    contentDescription = stringResource(R.string.inbox_forget),
-                )
+        Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+            // Status stripe — full card height, low-key but always visible.
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(stripeColor),
+            )
+            Row(
+                modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ProcessedThumbnail(record.thumbnailPath, onTap = onPreviewCover)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        cleanTitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        record.originalName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    val suffix = record.httpCode?.let { " · HTTP $it" }.orEmpty()
+                    Text(
+                        relativeTime(record.createdAt) + suffix,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onForget) {
+                    Icon(
+                        Icons.Outlined.Delete,
+                        contentDescription = stringResource(R.string.inbox_forget),
+                    )
+                }
             }
         }
+    }
+}
+
+/** Cover preview for the Processed view — taps open full-screen, missing
+ *  files fall back to a neutral icon. Mirrors the History thumbnail used
+ *  on the (now-removed) History list so the visual stays consistent. */
+@Composable
+private fun ProcessedThumbnail(path: String?, onTap: (File) -> Unit) {
+    val file = path?.let { File(it).takeIf(File::exists) }
+    Box(
+        modifier = Modifier
+            .size(width = 48.dp, height = 64.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .let { if (file != null) it.clickable { onTap(file) } else it },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (file != null) {
+            AsyncImage(
+                model = file,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Icon(
+                Icons.Outlined.Book,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Cheap relative-time formatter for the Processed card timestamps —
+ * "just now", "12m ago", "3h ago", "yesterday", "Apr 12". A relative
+ * label gives a faster glance-readable signal than the absolute datetime
+ * the History list used to show, and matches what most modern Android
+ * inbox UIs (Mihon Updates, Gmail, etc.) do.
+ */
+private fun relativeTime(epochMs: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - epochMs
+    return when {
+        diff < 60_000 -> "just now"
+        diff < 60 * 60_000 -> "${diff / 60_000}m ago"
+        diff < 24 * 60 * 60_000 -> "${diff / (60 * 60_000)}h ago"
+        diff < 7L * 24 * 60 * 60_000 -> "${diff / (24 * 60 * 60_000)}d ago"
+        else -> DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(epochMs))
     }
 }
 

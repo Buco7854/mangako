@@ -12,7 +12,6 @@ import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Tune
@@ -46,7 +45,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.mangako.app.data.pending.PendingRepository
 import com.mangako.app.ui.history.HistoryDetailScreen
-import com.mangako.app.ui.history.HistoryScreen
 import com.mangako.app.ui.inbox.InboxScreen
 import com.mangako.app.ui.pipeline.PipelineScreen
 import com.mangako.app.ui.settings.SettingsScreen
@@ -144,7 +142,6 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
             }) { Icon(Icons.Outlined.Inbox, null) }
         },
         Dest("pipeline", stringResource(R.string.nav_pipeline)) { Icon(Icons.Outlined.Tune, null) },
-        Dest("history", stringResource(R.string.nav_history)) { Icon(Icons.Outlined.History, null) },
         Dest("settings", stringResource(R.string.nav_settings)) { Icon(Icons.Outlined.Settings, null) },
     )
 
@@ -198,10 +195,10 @@ private fun MangakoRoot(viewModel: RootViewModel = hiltViewModel()) {
                 InboxScreen(
                     onOpenSettings = { navigateToTab("settings") },
                     onOpenPipeline = { navigateToTab("pipeline") },
+                    onOpenHistory = { id -> nav.navigate("history/$id") },
                 )
             }
             composable("pipeline") { PipelineScreen() }
-            composable("history") { HistoryScreen(onOpen = { id -> nav.navigate("history/$id") }) }
             composable("settings") { SettingsScreen() }
             composable("history/{id}") { entry ->
                 val id = entry.arguments?.getString("id").orEmpty()

@@ -27,13 +27,11 @@ import com.mangako.app.work.notify.Notifications
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -46,7 +44,7 @@ class InboxViewModel @Inject constructor(
     private val pendingRepo: PendingRepository,
     settingsRepo: SettingsRepository,
     pipelineRepo: PipelineRepository,
-    historyRepo: HistoryRepository,
+    private val historyRepo: HistoryRepository,
     private val evaluator: PipelineEvaluator,
     /** Exposed so the [com.mangako.app.ui.inbox.CoverThumbnail] composable
      *  can request lazy on-demand thumbnails for visible cards. */
@@ -63,15 +61,16 @@ class InboxViewModel @Inject constructor(
     private val backfilling: MutableSet<String> = Collections.synchronizedSet(HashSet())
 
     /**
-     * Three buckets of files — picking one drives the list shown on the
-     * Inbox. PENDING is the daily-use surface; PROCESSED and IGNORED let
-     * the user revisit past decisions and reprocess a file if they want
-     * to feed it back through the pipeline (e.g. after editing rules).
+     * Three buckets shown on the Inbox tab. PENDING and IGNORED come from
+     * the pending-row table; PROCESSED is the audit-trail record from
+     * [HistoryRepository] (so the tab acts as the History view too — that
+     * tab no longer exists separately). All three lists are loaded eagerly
+     * so the user can swipe between them without a flash of empty content.
      */
-    enum class Filter(val statuses: Set<PendingStatus>) {
-        PENDING(setOf(PendingStatus.PENDING)),
-        PROCESSED(setOf(PendingStatus.APPROVED, PendingStatus.DONE)),
-        IGNORED(setOf(PendingStatus.REJECTED)),
+    enum class Filter {
+        PENDING,
+        PROCESSED,
+        IGNORED,
     }
 
     /**
@@ -109,7 +108,9 @@ class InboxViewModel @Inject constructor(
 
     data class UiState(
         val filter: Filter = Filter.PENDING,
-        val items: List<InboxItem> = emptyList(),
+        val pendingItems: List<InboxItem> = emptyList(),
+        val processedRecords: List<HistoryRecord> = emptyList(),
+        val ignoredItems: List<InboxItem> = emptyList(),
         val counts: Map<Filter, Int> = emptyMap(),
         val setup: SetupStatus = SetupStatus(false, false, false),
     )
@@ -117,37 +118,30 @@ class InboxViewModel @Inject constructor(
     private val filter = MutableStateFlow(Filter.PENDING)
     val filterFlow: StateFlow<Filter> = filter.asStateFlow()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     val state: StateFlow<UiState> = combine(
-        filter
-            .flatMapLatest { f -> pendingRepo.observeByStatuses(f.statuses) }
-            // Self-heal pending rows whose ComicInfo extraction failed at
-            // detection time (cloud URI dropped bytes mid-stream, file
-            // caught mid-write, older row predating reliable extraction).
-            // Without this, the Inbox card title stays stuck on the raw
-            // filename until the user taps Process — even though we could
-            // re-read the .cbz right now. Runs once per row per process,
-            // guarded by [backfilling] so the same row isn't re-extracted
-            // by every Flow emission.
+        // Pending rows — re-extract metadata for any row whose detection-
+        // time snapshot is empty (cloud URI dropped bytes mid-stream, file
+        // caught mid-write). Without this the Inbox simulator has nothing
+        // to feed the pipeline and the card stays stuck on the raw filename.
+        pendingRepo.observeByStatuses(setOf(PendingStatus.PENDING))
             .onEach { rows -> backfillMissingMetadata(rows) },
-        pendingRepo.observeCounts(),
-        settingsRepo.flow,
-        pipelineRepo.flow,
+        pendingRepo.observeByStatuses(setOf(PendingStatus.REJECTED)),
+        // Processed = the audit-trail History (so the old History tab
+        // collapses into this one). Newest-first thanks to the DAO order.
         historyRepo.observe(),
-    ) { items, statusCounts, settings, config, history ->
-        // History indexed by original filename so Processed cards can
-        // surface the title/final name that actually landed in
-        // LANraragi — not a fresh re-simulation that could drift if the
-        // user edits the pipeline afterwards.
-        val historyByOriginal: Map<String, HistoryRecord> = history
-            .asReversed() // observe() returns newest-first; reverse so newest wins the put.
-            .associateBy { it.originalName }
+        pendingRepo.observeCounts(),
+        combine(settingsRepo.flow, pipelineRepo.flow, filter) { s, p, f -> Triple(s, p, f) },
+    ) { pending, ignored, history, statusCounts, (settings, config, currentFilter) ->
         UiState(
-            filter = filter.value,
-            items = items.map { p -> buildItem(p, config, historyByOriginal[p.name]) },
-            counts = Filter.values().associateWith { f ->
-                f.statuses.sumOf { statusCounts[it] ?: 0 }
-            },
+            filter = currentFilter,
+            pendingItems = pending.map { buildItem(it, config) },
+            processedRecords = history,
+            ignoredItems = ignored.map { buildItem(it, config) },
+            counts = mapOf(
+                Filter.PENDING to (statusCounts[PendingStatus.PENDING] ?: 0),
+                Filter.PROCESSED to history.size,
+                Filter.IGNORED to (statusCounts[PendingStatus.REJECTED] ?: 0),
+            ),
             setup = SetupStatus(
                 serverConnected = settings.lanraragiUrl.isNotBlank() && settings.lanraragiApiKey.isNotBlank(),
                 foldersConfigured = settings.watchFolderUris.isNotEmpty(),
@@ -180,12 +174,18 @@ class InboxViewModel @Inject constructor(
         Notifications.cancelDetected(context, file.id)
     }
 
-    /** Hard-delete a row — useful from the Processed view when the user
-     *  doesn't ever want to see this file again. The on-disk .cbz is left
-     *  alone; only Mangako's tracking row goes away. */
+    /** Hard-delete a pending row (used by the Ignored view). The on-disk
+     *  .cbz is left alone; only Mangako's tracking row goes away. */
     fun forget(file: PendingFile) = viewModelScope.launch {
         pendingRepo.delete(file.id)
         Notifications.cancelDetected(context, file.id)
+    }
+
+    /** Delete a single history record from the Processed view. The
+     *  on-disk .cbz and the LANraragi-side archive are untouched; only
+     *  Mangako's audit row disappears. */
+    fun forgetProcessed(id: String) = viewModelScope.launch {
+        historyRepo.delete(id)
     }
 
     /** Persist edit-detection overrides + removals.
@@ -202,8 +202,8 @@ class InboxViewModel @Inject constructor(
         pendingRepo.setMetadataEdits(file.id, overrides, removals)
     }
 
-    fun approveAll() = viewModelScope.launch { state.value.items.forEach { approve(it.file) } }
-    fun rejectAll() = viewModelScope.launch { state.value.items.forEach { reject(it.file) } }
+    fun approveAll() = viewModelScope.launch { state.value.pendingItems.forEach { approve(it.file) } }
+    fun rejectAll() = viewModelScope.launch { state.value.pendingItems.forEach { reject(it.file) } }
 
     /**
      * Re-extract ComicInfo for any pending rows whose stored detection
@@ -240,20 +240,11 @@ class InboxViewModel @Inject constructor(
         }
     }
 
-    private fun buildItem(file: PendingFile, config: PipelineConfig, historyRow: HistoryRecord?): InboxItem {
-        val displayTitle = when (file.status) {
-            // For files that already uploaded, reconstruct the title from
-            // the audit trail of the run that landed — that's the string
-            // the user saw in LANraragi and the History detail surfaces.
-            // Fresh re-simulation would drift if rules have changed since.
-            PendingStatus.APPROVED, PendingStatus.DONE ->
-                historyRow?.let(::titleFromTrail) ?: simulateTitle(config, file)
-            else -> simulateTitle(config, file)
-        }
+    private fun buildItem(file: PendingFile, config: PipelineConfig): InboxItem {
         return InboxItem(
             file = file,
-            displayTitle = displayTitle,
-            recordedFinal = file.finalName ?: historyRow?.finalName,
+            displayTitle = simulateTitle(config, file),
+            recordedFinal = file.finalName,
         )
     }
 
@@ -300,18 +291,6 @@ class InboxViewModel @Inject constructor(
             ?: filenameStem
     }
 
-    /**
-     * Aggregate per-step variable deltas across the audit trail to
-     * recover the final `%title%` the pipeline produced at upload time.
-     * Same value the History detail screen surfaces in its Breakdown
-     * card — using it here means Processed cards and History agree.
-     */
-    private fun titleFromTrail(record: HistoryRecord): String? {
-        val vars = LinkedHashMap<String, String>()
-        for (step in record.trail.steps) for ((k, v) in step.variablesAfter) vars[k] = v
-        return vars["title"]?.takeIf { it.isNotBlank() && !UNRESOLVED_TOKEN.containsMatchIn(it) }
-    }
-
     private companion object {
         /** Detects "%name%" tokens that survived interpolation — when a
          *  SetVariable references a missing variable the literal token
@@ -328,4 +307,16 @@ class InboxViewModel @Inject constructor(
 fun PipelineEvaluation.cleanTitle(): String? {
     val raw = this["title"] ?: return null
     return raw.takeIf { it.isNotBlank() && !Regex("%[a-zA-Z_][a-zA-Z0-9_]*%").containsMatchIn(it) }
+}
+
+/** Reconstruct the cleaned `%title%` value from a history record's audit
+ *  trail — same string the user saw in LANraragi when the file landed.
+ *  Used by the Processed card so the title shown there matches the History
+ *  detail screen's Breakdown view. */
+fun com.mangako.app.data.history.HistoryRecord.cleanedTitle(): String? {
+    val vars = LinkedHashMap<String, String>()
+    for (step in trail.steps) for ((k, v) in step.variablesAfter) vars[k] = v
+    return vars["title"]?.takeIf {
+        it.isNotBlank() && !Regex("%[a-zA-Z_][a-zA-Z0-9_]*%").containsMatchIn(it)
+    }
 }

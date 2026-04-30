@@ -431,13 +431,19 @@ object DefaultTemplate {
             //     `group:%writer%` and `artist:%writer%` and any
             //     ComicInfo-XSD-strict reader still sees a populated
             //     <Writer>.
+            //
+            //     <Series> is intentionally cleared (empty value): in
+            //     this dataset it carries the manga's name, not an
+            //     actual series, so leaving it in would make LANraragi
+            //     group every chapter under that umbrella instead of
+            //     letting the user organise their library themselves.
             add(
                 Rule.WriteComicInfo(
                     id = id(),
                     label = "Sync ComicInfo with cleaned pipeline values",
                     fields = mapOf(
                         "Title" to "%title%",
-                        "Series" to "%series%",
+                        "Series" to "",
                         "Writer" to "%writer%",
                         "Penciller" to "%writer%",
                         "Number" to "%number%",

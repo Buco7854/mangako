@@ -5,7 +5,6 @@
     <!-- Navigation -->
     <string name="nav_inbox">Inbox</string>
     <string name="nav_pipeline">Pipeline</string>
-    <string name="nav_history">History</string>
     <string name="nav_settings">Settings</string>
 
 
@@ -194,10 +193,7 @@
     <string name="inbox_setup_step_rules">Add at least one renaming rule</string>
     <string name="inbox_setup_step_done">Done</string>
 
-    <!-- History -->
-    <string name="history_title">History</string>
-    <string name="history_clear_cd">Clear history</string>
-    <string name="history_empty">Nothing here yet — Mangako will record every file it processes.</string>
+    <!-- History (detail view, opened from a Processed card) -->
     <string name="history_detail_title">What Mangako did</string>
     <string name="history_detail_back_cd">Back</string>
     <string name="history_label_original">Started with</string>
@@ -209,7 +205,6 @@
     <string name="history_loading">Loading…</string>
     <string name="history_step_header">%1$d. %2$s</string>
     <string name="history_step_duration_ms">%1$d ms</string>
-    <string name="history_delete_cd">Delete entry</string>
     <string name="fullscreen_image_close_cd">Close preview</string>
     <string name="history_upload_success">Uploaded successfully (HTTP %1$d)</string>
     <string name="history_upload_fail">Upload failed</string>

@@ -276,14 +276,15 @@ class PipelineExecutorTest {
             ),
         )
         assertEquals("[Author] My Series Ch 39 [English] [Manhwa].cbz", out.finalFilename)
-        // Pipeline now writes back the cleaned values for every relevant
+        // Pipeline writes back the cleaned values for every relevant
         // ComicInfo field, not just Title — so LANraragi (and any
         // ComicInfo metadata plugin) sees the post-pipeline data.
         // Penciller carries %writer% so LANraragi emits artist: tags;
         // LanguageISO carries the full name (verbatim — used as the
-        // value of the language: tag).
+        // value of the language: tag). Series is cleared so the upload
+        // doesn't get auto-grouped under Mihon's umbrella series.
         assertEquals("My Series Ch 39", out.comicInfoUpdates["Title"])
-        assertEquals("My Series", out.comicInfoUpdates["Series"])
+        assertEquals("", out.comicInfoUpdates["Series"])
         assertEquals("Author", out.comicInfoUpdates["Writer"])
         assertEquals("Author", out.comicInfoUpdates["Penciller"])
         assertEquals("39", out.comicInfoUpdates["Number"])

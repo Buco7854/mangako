@@ -276,8 +276,15 @@ class PipelineExecutorTest {
             ),
         )
         assertEquals("[Author] My Series Ch 39 [English] [Manhwa].cbz", out.finalFilename)
+        // Pipeline now writes back the cleaned values for every relevant
+        // ComicInfo field, not just Title — so LANraragi (and any
+        // ComicInfo metadata plugin) sees the post-pipeline data.
         assertEquals("My Series Ch 39", out.comicInfoUpdates["Title"])
-        assertEquals("", out.comicInfoUpdates["Series"])
+        assertEquals("My Series", out.comicInfoUpdates["Series"])
+        assertEquals("Author", out.comicInfoUpdates["Writer"])
+        assertEquals("39", out.comicInfoUpdates["Number"])
+        assertEquals("Manhwa; Action", out.comicInfoUpdates["Genre"])
+        assertEquals("en", out.comicInfoUpdates["LanguageISO"])
     }
 
     @Test fun `default template preserves an event tag carried in Title`() {

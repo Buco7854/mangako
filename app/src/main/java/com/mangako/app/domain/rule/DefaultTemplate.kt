@@ -22,7 +22,7 @@ import java.util.UUID
  *   5. Manhwa       — append "Ch N" to %title%, ensure [Manhwa] in tags
  *   6. Build        — assemble the filename in one SetVariable step
  *   7. Hygiene      — strip illegal chars, collapse whitespace
- *   8. Sync         — write %title% back into ComicInfo, clear Series
+ *   8. Sync         — write all cleaned fields back into ComicInfo
  *
  * Everything below is editable once loaded — users can reorder, delete,
  * or override any rule from the UI.
@@ -405,25 +405,69 @@ object DefaultTemplate {
             // Phase 8: Sync ComicInfo
             // ─────────────────────────────────────────────
 
-            // 16. Write %title% into ComicInfo's <Title> and clear
-            //     <Series>. Without the Title write, LANraragi's
-            //     auto-extraction keeps showing Mihon's "Chapter
-            //     39"; without the Series clear it groups uploads
-            //     by Mihon's per-manga <Series> rather than letting
-            //     the user organise them themselves. Mirrors
-            //     fix_comicinfo_title + remove_comicinfo_series in
-            //     mihon.sh.
+            // 16. Compute %language_iso% from %language%. ComicInfo's
+            //     <LanguageISO> field is a 2-letter ISO 639-1 code, not
+            //     the human-readable name we stored in %language%, so we
+            //     map them here before the write step. Match is
+            //     case-insensitive so "english" / "English" / "ENGLISH"
+            //     all resolve correctly.
+            add(languageToIso("English", "en"))
+            add(languageToIso("Japanese", "ja"))
+            add(languageToIso("Chinese", "zh"))
+            add(languageToIso("Korean", "ko"))
+            add(languageToIso("French", "fr"))
+            add(languageToIso("Spanish", "es"))
+            add(languageToIso("German", "de"))
+            add(languageToIso("Italian", "it"))
+            add(languageToIso("Portuguese", "pt"))
+            add(languageToIso("Russian", "ru"))
+            add(languageToIso("Thai", "th"))
+            add(languageToIso("Vietnamese", "vi"))
+
+            // 17. Write the cleaned pipeline values back into
+            //     ComicInfo.xml so LANraragi's auto-extraction (and
+            //     any ComicInfo metadata plugin) reads the cleaned
+            //     fields, not Mihon's stale ones. The merge in
+            //     CbzProcessor preserves any ComicInfo field we don't
+            //     mention here, so this is purely additive.
             add(
                 Rule.WriteComicInfo(
                     id = id(),
-                    label = "Sync ComicInfo with title",
+                    label = "Sync ComicInfo with cleaned pipeline values",
                     fields = mapOf(
                         "Title" to "%title%",
-                        "Series" to "",
+                        "Series" to "%series%",
+                        "Writer" to "%writer%",
+                        "Number" to "%number%",
+                        "Genre" to "%genre%",
+                        "LanguageISO" to "%language_iso%",
+                        "Summary" to "%summary%",
                     ),
                 ),
             )
         },
+    )
+
+    /** %language% (e.g. "English") → %language_iso% (e.g. "en"). One
+     *  ConditionalFormat per language so users can spot and remove
+     *  individual mappings the same way they can with the emoji
+     *  fallbacks. Match is case-insensitive (Condition.ignoreCase
+     *  defaults to true), so a lowercased %language% still resolves. */
+    private fun languageToIso(lang: String, iso: String): Rule = Rule.ConditionalFormat(
+        id = id(),
+        label = "$lang → $iso",
+        condition = Condition(
+            variable = "language",
+            op = Condition.Op.EQUALS,
+            value = lang,
+        ),
+        thenRules = listOf(
+            Rule.SetVariable(
+                id = id(),
+                target = "language_iso",
+                value = iso,
+            ),
+        ),
     )
 
     /** Single emoji-flag → language ConditionalFormat used by the

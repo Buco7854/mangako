@@ -183,9 +183,25 @@ class InboxViewModel @Inject constructor(
 
     /** Delete a single history record from the Processed view. The
      *  on-disk .cbz and the LANraragi-side archive are untouched; only
-     *  Mangako's audit row disappears. */
+     *  Mangako's audit row disappears.
+     *
+     *  Also drop the matching DONE pending row so the watcher will
+     *  re-detect the file on the next scan. Without this, the pending
+     *  table keeps a (uri, sizeBytes) match in DONE state forever and
+     *  [PendingRepository.addIfAbsent] silently treats every future
+     *  rescan as a duplicate — the user expects "remove from Processed"
+     *  to mean "stop ignoring", not "ignore forever without a record".
+     *
+     *  History ids minted in approval-mode runs are prefixed
+     *  `pending:<pendingId>` (see [ProcessCbzWorker.stableHistoryId]),
+     *  so we can recover the pending row id directly without a fuzzy
+     *  filename join. AUTO-mode runs use an `auto:<sha1>` prefix and
+     *  have no pending row to clean up, so they fall through. */
     fun forgetProcessed(id: String) = viewModelScope.launch {
         historyRepo.delete(id)
+        if (id.startsWith(PENDING_HISTORY_PREFIX)) {
+            pendingRepo.delete(id.removePrefix(PENDING_HISTORY_PREFIX))
+        }
     }
 
     /** Persist edit-detection overrides + removals.
@@ -297,6 +313,11 @@ class InboxViewModel @Inject constructor(
          *  comes through verbatim, and we'd rather show a sane fallback
          *  than a half-substituted template string. */
         private val UNRESOLVED_TOKEN = Regex("%[a-zA-Z_][a-zA-Z0-9_]*%")
+
+        /** Prefix prepended by [com.mangako.app.work.ProcessCbzWorker.stableHistoryId]
+         *  to history rows that originated from an approval-mode pending
+         *  row. Stripping it yields the original pending id. */
+        private const val PENDING_HISTORY_PREFIX = "pending:"
     }
 }
 

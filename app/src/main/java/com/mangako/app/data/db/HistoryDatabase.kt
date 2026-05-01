@@ -115,19 +115,6 @@ interface HistoryDao {
     @Query("DELETE FROM history WHERE createdAt < :cutoff")
     suspend fun pruneOlderThan(cutoff: Long): Int
 
-    /** Drop everything past the [keep] most recent rows. Called after
-     *  each insert so the on-disk list mirrors what the History screen
-     *  shows — no shadow tail of older entries piling up. */
-    @Query(
-        """
-        DELETE FROM history
-        WHERE id NOT IN (
-            SELECT id FROM history ORDER BY createdAt DESC LIMIT :keep
-        )
-        """,
-    )
-    suspend fun retainMostRecent(keep: Int): Int
-
     @Query("DELETE FROM history")
     suspend fun clear()
 }

@@ -63,6 +63,32 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --stacktrace --no-daemon
 
+      # Decode the release keystore so assembleRelease produces an APK
+      # that's signature-compatible with the tagged GitHub Releases (and
+      # with every previous CI build on the same branch). Without this
+      # the release variant falls back to the runner's auto-generated
+      # debug keystore — different on every run — and users get
+      # INSTALL_FAILED_UPDATE_INCOMPATIBLE ("app is in conflict") trying
+      # to update to the latest CI APK.
+      #
+      # Secret access rules:
+      #   - Pushes to branches inside the repo (main, claude/**)  → have secrets, signed properly.
+      #   - PRs from forks → no secrets by design; we skip the decode and let the debug-key
+      #     fallback in build.gradle.kts handle it. Those builds aren't user-distributable anyway.
+      - name: Decode release keystore
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.MANGAKO_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::MANGAKO_KEYSTORE_BASE64 not available (likely a fork PR); release APK will use the runner debug key."
+            echo "have_keystore=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/mangako-release.jks"
+          test -s "$RUNNER_TEMP/mangako-release.jks"
+          echo "have_keystore=true" >> "$GITHUB_OUTPUT"
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -86,6 +112,11 @@ jobs:
         run: ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Assemble release
+        env:
+          MANGAKO_KEYSTORE: ${{ steps.keystore.outputs.have_keystore == 'true' && format('{0}/mangako-release.jks', runner.temp) || '' }}
+          MANGAKO_KEYSTORE_PASSWORD: ${{ secrets.MANGAKO_KEYSTORE_PASSWORD }}
+          MANGAKO_KEY_ALIAS: ${{ secrets.MANGAKO_KEY_ALIAS }}
+          MANGAKO_KEY_PASSWORD: ${{ secrets.MANGAKO_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --stacktrace --no-daemon
 
       - name: Upload debug APK

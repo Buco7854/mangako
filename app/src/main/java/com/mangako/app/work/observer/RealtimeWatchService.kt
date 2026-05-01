@@ -230,13 +230,20 @@ class RealtimeWatchService : Service() {
         private const val TAG = "RealtimeWatchSvc"
 
         /**
-         * In-process catch-up tick. Frequent enough that users notice new
-         * chapters in roughly the same window as a notification but not
-         * so often that we burn battery walking the SAF tree on idle
-         * devices. WorkManager's periodic schedule remains as the
-         * cross-process fallback for when the service itself is dead.
+         * In-process catch-up tick. Tight enough to paper over the FUSE
+         * cross-process inotify gap on Samsung One UI / Android 14+, where
+         * writes from another app (Mihon, browser downloads, etc.) frequently
+         * don't surface as kernel events in our app's FUSE mount even though
+         * the file is visible to `DocumentFile.listFiles()`. Cross-mount
+         * renames still fire MOVED_TO, so inotify isn't useless — this loop
+         * just guarantees an upper bound on detection latency regardless.
+         *
+         * Doze suspends the timer when the device is idle, so the real
+         * battery cost is concentrated in active-use periods (which is also
+         * when downloads happen). WorkManager's periodic schedule remains as
+         * the cross-process fallback for when the service itself is dead.
          */
-        private val CATCH_UP_INTERVAL_MS = TimeUnit.MINUTES.toMillis(5)
+        private val CATCH_UP_INTERVAL_MS = TimeUnit.SECONDS.toMillis(90)
 
         /**
          * Starts the service if the user has the watcher on AND has granted

@@ -31,10 +31,11 @@ class HistoryRepository @Inject constructor(private val dao: HistoryDao) {
 
     /**
      * Observe the full on-disk history, newest first. No query-time
-     * limit — the Inbox's Processed tab uses a LazyColumn, so the
-     * screen renders large lists efficiently. Long-term growth is
-     * bounded by [MaintenanceWorker]'s age-based prune (90 days), not
-     * by a row count cap.
+     * limit and no background prune: the table doubles as the
+     * "already processed, don't re-detect" record, so trimming it
+     * would silently re-surface old uploads. The user manages growth
+     * manually via the Processed tab's per-row trash and Clear-all
+     * actions; the screen uses a LazyColumn so large lists scroll fine.
      */
     fun observe(): Flow<List<HistoryRecord>> =
         dao.observeAll().map { rows -> rows.map { it.toRecord() } }
@@ -82,8 +83,6 @@ class HistoryRepository @Inject constructor(private val dao: HistoryDao) {
      *  action on the History screen — for forgetting a specific run
      *  without nuking the whole list. */
     suspend fun delete(id: String) = dao.deleteById(id)
-
-    suspend fun pruneOlderThan(cutoff: Long): Int = dao.pruneOlderThan(cutoff)
 
     private fun HistoryEntry.toRecord(): HistoryRecord = HistoryRecord(
         id = id,

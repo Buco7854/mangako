@@ -9,7 +9,6 @@ import com.mangako.app.data.pending.PendingStatus
 import com.mangako.app.data.pipeline.PipelineRepository
 import com.mangako.app.data.settings.SettingsRepository
 import com.mangako.app.domain.cbz.CbzProcessor
-import com.mangako.app.work.MaintenanceWorker
 import com.mangako.app.work.observer.RealtimeWatchService
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -47,8 +46,6 @@ class MangakoApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        // Schedule daily housekeeping once; WorkManager deduplicates by unique name.
-        MaintenanceWorker.schedule(this)
         preloadDefaultPipelineOnce()
         backfillPendingDetectionInfo()
         reconcileWatchService()

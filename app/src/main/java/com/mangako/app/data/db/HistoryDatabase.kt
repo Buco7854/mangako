@@ -112,9 +112,6 @@ interface HistoryDao {
     @Query("DELETE FROM history WHERE id = :id")
     suspend fun deleteById(id: String): Int
 
-    @Query("DELETE FROM history WHERE createdAt < :cutoff")
-    suspend fun pruneOlderThan(cutoff: Long): Int
-
     @Query("DELETE FROM history")
     suspend fun clear()
 }
@@ -159,9 +156,6 @@ interface PendingDao {
 
     @Query("DELETE FROM pending WHERE id = :id")
     suspend fun delete(id: String)
-
-    @Query("DELETE FROM pending WHERE status IN ('REJECTED','DONE') AND detectedAt < :cutoff")
-    suspend fun pruneOld(cutoff: Long)
 }
 
 class Converters {

@@ -1,8 +1,10 @@
 package com.mangako.app.work.observer
 
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
@@ -17,8 +19,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 /**
@@ -50,6 +55,29 @@ class RealtimeWatchService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val activeObservers = mutableMapOf<String, MangakoFolderObserver>()
     private var collectorJob: Job? = null
+    private var catchUpJob: Job? = null
+
+    /**
+     * Receiver for the wake-style system broadcasts (screen on, user
+     * unlock, power connected). These fire at moments where the user is
+     * very likely about to interact with manga, AND moments where the
+     * OS has likely just left Doze — both excellent excuses to refresh
+     * the inbox even if inotify dropped events while we were idle.
+     *
+     * Nextcloud's auto-upload service registers an analogous wake
+     * receiver for the same reason; this is the user's reference point
+     * and the part that turns "I only get notifications when I open
+     * the app" into "I see new chapters when I unlock my phone".
+     *
+     * Only registered at runtime — manifest receivers can't subscribe
+     * to ACTION_SCREEN_ON / ACTION_USER_PRESENT.
+     */
+    private val wakeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            DirectoryScanWorker.runIfWatching(context.applicationContext)
+        }
+    }
+    private var wakeReceiverRegistered = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -57,6 +85,8 @@ class RealtimeWatchService : Service() {
         super.onCreate()
         Notifications.ensureChannels(this)
         startInForeground()
+        registerWakeReceiver()
+        startPeriodicCatchUp()
         observeSettings()
     }
 
@@ -72,9 +102,63 @@ class RealtimeWatchService : Service() {
 
     override fun onDestroy() {
         collectorJob?.cancel()
+        catchUpJob?.cancel()
+        unregisterWakeReceiver()
         stopAllObservers()
         scope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * In-process safety net that fires every [CATCH_UP_INTERVAL_MS] while
+     * the foreground service is alive. Runs in addition to inotify, not
+     * instead of it.
+     *
+     * Why we don't lean only on WorkManager's periodic scan:
+     *  - WorkManager's minimum interval is 15 minutes, and Doze can stretch
+     *    that further on devices with aggressive power management.
+     *  - This loop runs inside an FGS coroutine, so as long as the service
+     *    is alive (which is the WHOLE POINT of the service) it ticks on
+     *    its own clock, independent of JobScheduler / Doze deferral.
+     *  - inotify on its own loses events during kernel queue overflow and
+     *    on filesystems that don't deliver them at all (FUSE-mounted SAF
+     *    backends, NFS, etc.). The user has watcherEnabled — that's
+     *    explicit consent to spend the cycles double-checking.
+     */
+    private fun startPeriodicCatchUp() {
+        catchUpJob = scope.launch {
+            while (isActive) {
+                delay(CATCH_UP_INTERVAL_MS)
+                DirectoryScanWorker.runIfWatching(applicationContext)
+            }
+        }
+    }
+
+    private fun registerWakeReceiver() {
+        if (wakeReceiverRegistered) return
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_POWER_CONNECTED)
+        }
+        runCatching {
+            // System broadcasts are still delivered to NOT_EXPORTED
+            // receivers — the flag only blocks third-party app senders.
+            // Required from API 33+ when not specifying a permission.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(wakeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(wakeReceiver, filter)
+            }
+            wakeReceiverRegistered = true
+        }.onFailure { Log.w(TAG, "Could not register wake receiver: ${it.message}") }
+    }
+
+    private fun unregisterWakeReceiver() {
+        if (!wakeReceiverRegistered) return
+        runCatching { unregisterReceiver(wakeReceiver) }
+        wakeReceiverRegistered = false
     }
 
     private fun startInForeground() {
@@ -144,6 +228,15 @@ class RealtimeWatchService : Service() {
 
     companion object {
         private const val TAG = "RealtimeWatchSvc"
+
+        /**
+         * In-process catch-up tick. Frequent enough that users notice new
+         * chapters in roughly the same window as a notification but not
+         * so often that we burn battery walking the SAF tree on idle
+         * devices. WorkManager's periodic schedule remains as the
+         * cross-process fallback for when the service itself is dead.
+         */
+        private val CATCH_UP_INTERVAL_MS = TimeUnit.MINUTES.toMillis(5)
 
         /**
          * Starts the service if the user has the watcher on AND has granted

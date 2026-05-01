@@ -80,6 +80,8 @@ import com.mangako.app.domain.cbz.CbzProcessor
 import com.mangako.app.domain.cbz.ThumbnailService
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -676,7 +678,20 @@ private fun EditDetectionSheet(
     // order first, then any custom keys alphabetically — keeps the
     // sheet visually predictable without forcing empty schema slots
     // on the user.
-    val fields = remember(detectedMetadata, initialOverrides, initialRemovals) {
+    //
+    // No `remember` keys: the parent gates this composable on `editing`
+    // so a brand-new EditDetectionSheet is created every time the user
+    // opens it. Keying on the input maps caused the field state to be
+    // rebuilt mid-edit when the parent flow re-emitted the same
+    // PendingFile (new map identities, identical content) — recreating
+    // the underlying TextField state and snapping the IME cursor back
+    // to position 0 on first focus, which is the bug the user hit.
+    //
+    // Values are TextFieldValue so the cursor + selection survive the
+    // recompositions caused by IME insets, ModalBottomSheet height
+    // animation, and LazyColumn item remeasure. With a plain String the
+    // first focus tick can lose the selection and snap the caret to 0.
+    val fields = remember {
         val merged = LinkedHashMap<String, String>()
         for ((k, v) in detectedMetadata) {
             if (k in initialRemovals) continue
@@ -690,12 +705,14 @@ private fun EditDetectionSheet(
         for (k in standardKeys) merged[k]?.let { ordered[k] = it }
         for ((k, v) in merged) if (k !in standardKeys) ordered[k] = v
         ordered.entries
-            .map { (k, v) -> mutableStateOf(k) to mutableStateOf(v) }
+            .map { (k, v) ->
+                mutableStateOf(k) to mutableStateOf(
+                    TextFieldValue(text = v, selection = TextRange(v.length)),
+                )
+            }
             .toMutableStateList()
     }
-    val removals = remember(detectedMetadata, initialRemovals) {
-        initialRemovals.toMutableStateList()
-    }
+    val removals = remember { initialRemovals.toMutableStateList() }
     // null = picker closed; PICKER = the dropdown is open;
     // CUSTOM = the user chose "Custom variable…" and is typing a name.
     var addingField by remember { mutableStateOf<AddFieldMode?>(null) }
@@ -826,9 +843,11 @@ private fun EditDetectionSheet(
                         TextButton(
                             onClick = {
                                 removals.remove(key)
+                                val restored = displayValue(key, detectedMetadata[key].orEmpty())
                                 fields.add(
-                                    mutableStateOf(key) to
-                                        mutableStateOf(displayValue(key, detectedMetadata[key].orEmpty())),
+                                    mutableStateOf(key) to mutableStateOf(
+                                        TextFieldValue(restored, TextRange(restored.length)),
+                                    ),
                                 )
                             },
                         ) { Text(stringResource(R.string.inbox_edit_field_restore)) }
@@ -863,7 +882,10 @@ private fun EditDetectionSheet(
                             enabled = newKey.isNotBlank() && fields.none { it.first.value == newKey },
                             onClick = {
                                 removals.remove(newKey)
-                                fields.add(mutableStateOf(newKey) to mutableStateOf(""))
+                                fields.add(
+                                    mutableStateOf(newKey) to
+                                        mutableStateOf(TextFieldValue("")),
+                                )
                                 newKey = ""
                                 addingField = null
                             },
@@ -889,7 +911,10 @@ private fun EditDetectionSheet(
                                         // Re-adding a previously-removed key
                                         // cancels its pending removal.
                                         removals.remove(key)
-                                        fields.add(mutableStateOf(key) to mutableStateOf(""))
+                                        fields.add(
+                                            mutableStateOf(key) to
+                                                mutableStateOf(TextFieldValue("")),
+                                        )
                                         addingField = null
                                     },
                                 )
@@ -932,7 +957,7 @@ private fun EditDetectionSheet(
                             for ((keyState, valueState) in fields) {
                                 val key = keyState.value
                                 if (key.isBlank()) continue
-                                val raw = valueState.value
+                                val raw = valueState.value.text
                                 // Keep the user's exact string — only strip
                                 // trailing newlines from any keyboard slips.
                                 // The repo handles extra_tags leading-space

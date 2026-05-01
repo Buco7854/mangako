@@ -202,8 +202,6 @@ class PendingRepository @Inject constructor(private val dao: PendingDao) {
 
     suspend fun delete(id: String) = dao.delete(id)
 
-    suspend fun pruneOlderThan(cutoff: Long) = dao.pruneOld(cutoff)
-
     private fun PendingEntry.toDomain() = PendingFile(
         id = id,
         uri = uri,

@@ -30,10 +30,12 @@ data class HistoryRecord(
 class HistoryRepository @Inject constructor(private val dao: HistoryDao) {
 
     /**
-     * Observe the full on-disk history. The list size is bounded by
-     * [MAX_RETAINED] — after each [record] insert we rotate the table
-     * to keep only the newest entries, so this Flow's emissions stay
-     * small without the screen needing a query-time limit.
+     * Observe the full on-disk history, newest first. No query-time
+     * limit and no background prune: the table doubles as the
+     * "already processed, don't re-detect" record, so trimming it
+     * would silently re-surface old uploads. The user manages growth
+     * manually via the Processed tab's per-row trash and Clear-all
+     * actions; the screen uses a LazyColumn so large lists scroll fine.
      */
     fun observe(): Flow<List<HistoryRecord>> =
         dao.observeAll().map { rows -> rows.map { it.toRecord() } }
@@ -72,10 +74,6 @@ class HistoryRepository @Inject constructor(private val dao: HistoryDao) {
                 thumbnailPath = thumbnailPath,
             )
         )
-        // Rotate: keep the newest MAX_RETAINED rows, drop the rest. The
-        // History screen shows everything that's on disk, so the cap is
-        // enforced here rather than at query time.
-        dao.retainMostRecent(MAX_RETAINED)
         return id
     }
 
@@ -85,14 +83,6 @@ class HistoryRepository @Inject constructor(private val dao: HistoryDao) {
      *  action on the History screen — for forgetting a specific run
      *  without nuking the whole list. */
     suspend fun delete(id: String) = dao.deleteById(id)
-
-    suspend fun pruneOlderThan(cutoff: Long): Int = dao.pruneOlderThan(cutoff)
-
-    companion object {
-        /** Hard cap on rows kept on disk. After each insert the table
-         *  is rotated down to this size (oldest dropped). */
-        const val MAX_RETAINED = 30
-    }
 
     private fun HistoryEntry.toRecord(): HistoryRecord = HistoryRecord(
         id = id,

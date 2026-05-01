@@ -9,6 +9,7 @@ import com.mangako.app.data.pending.PendingStatus
 import com.mangako.app.data.pipeline.PipelineRepository
 import com.mangako.app.data.settings.SettingsRepository
 import com.mangako.app.domain.cbz.CbzProcessor
+import com.mangako.app.work.DirectoryScanWorker
 import com.mangako.app.work.observer.RealtimeWatchService
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -49,6 +50,26 @@ class MangakoApp : Application(), Configuration.Provider {
         preloadDefaultPipelineOnce()
         backfillPendingDetectionInfo()
         reconcileWatchService()
+        rearmWatcherSchedule()
+    }
+
+    /**
+     * WorkManager persists across reboots, but the periodic schedule can be
+     * lost after data wipes or when a worker's signature changes between
+     * versions. Today the schedule is only re-armed by [BootReceiver] (after
+     * boot/update) and the Settings screen (when the user mutates folders or
+     * the toggle), so a user can sit with the watcher on but no scan worker
+     * actually queued. Re-issuing here on every process start covers that
+     * gap — it's idempotent: `enqueueUniquePeriodicWork` with `UPDATE` either
+     * keeps the existing run or replaces it with the same definition.
+     */
+    private fun rearmWatcherSchedule() {
+        appScope.launch {
+            val settings = settingsRepo.flow.first()
+            if (settings.watcherEnabled && settings.watchFolderUris.isNotEmpty()) {
+                DirectoryScanWorker.schedule(this@MangakoApp, settings.watchFolderUris)
+            }
+        }
     }
 
     /**

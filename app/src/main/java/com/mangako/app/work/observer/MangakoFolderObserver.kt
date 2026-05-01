@@ -56,10 +56,28 @@ class MangakoFolderObserver(
         runCatching { observer.startWatching() }
             .onFailure { Log.w(TAG, "Could not watch ${dir.absolutePath}: ${it.message}") }
 
-        // Recurse into existing subdirectories. We don't follow symlinks —
-        // the `listFiles` filter implicitly stops at File.isDirectory.
+        // Walk what's already on disk:
+        //   - subdirectories: recurse so they get their own observer
+        //   - .cbz files: emit. Two cases this catches that pure inotify
+        //     misses —
+        //       1. The file was written into a directory that was created
+        //          AFTER we started watching the parent, in the millisecond
+        //          between the parent's CREATE event firing and us actually
+        //          arming an observer here. The kernel doesn't queue events
+        //          for an unwatched path, so without this rescan they'd be
+        //          gone forever.
+        //       2. The watcher is starting after the writer already
+        //          finished (process restart, boot, user toggling
+        //          watcher off then on) and we missed CLOSE_WRITE for
+        //          files that landed while we were dead.
+        //   We don't follow symlinks — `listFiles` reports the resolved
+        //   File but we only descend on isDirectory, which is enough.
         dir.listFiles()?.forEach { child ->
-            if (child.isDirectory) watchRecursive(child)
+            if (child.isDirectory) {
+                watchRecursive(child)
+            } else if (child.name.endsWith(".cbz", ignoreCase = true)) {
+                onCbzReady(child)
+            }
         }
     }
 
